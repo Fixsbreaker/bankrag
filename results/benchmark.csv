@@ -1,0 +1,5 @@
+index,bytes_per_vector,index_mb,latency_ms,recall_at_10
+flat,1536,,,
+hnsw,1536,,,
+hnsw_sq8,384,,,
+ivf_pq,16,,,
