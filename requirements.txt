@@ -2,3 +2,7 @@ faiss-cpu>=1.8
 sentence-transformers>=3.0
 numpy>=1.26
 pypdf>=4.0
+anthropic>=1.0
+python-dotenv>=1.0
+streamlit>=1.40
+pandas>=2.0
