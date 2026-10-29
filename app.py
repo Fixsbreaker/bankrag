@@ -52,6 +52,12 @@ def render_answer(question: str, k: int, index_dir: str) -> None:
     st.subheader("Источники" if cited else "Найденные фрагменты (в ответе не использованы)")
     for h in cited or hits:
         with st.expander(f"{h['source']} · близость {h['score']:.2f}"):
+            if h.get("page"):
+                st.caption(f"Страница {h['page']}")
+            if h.get("source_url"):
+                page_anchor = f"#page={h['page']}" if h.get("page") else ""
+                st.markdown(f"[Открыть документ банка]({h['source_url']}{page_anchor})")
+                st.caption("Ответ относится к сохранённой версии документа; действующие условия проверяйте у банка.")
             st.write(h["text"])
 
 

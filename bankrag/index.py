@@ -33,5 +33,5 @@ def build_index(kind: str, vectors: np.ndarray, hnsw_m: int = 32, pq_m: int = 16
 
 
 def bytes_per_vector(kind: str, d: int, pq_m: int = 16) -> int:
-    """Память на сам вектор без графа HNSW — для честного сравнения SQ и PQ."""
+    """Размер кода вектора. Не включает граф, ID, центроиды и словари PQ."""
     return {"flat": 4 * d, "hnsw": 4 * d, "hnsw_sq8": d, "ivf_pq": pq_m}[kind]

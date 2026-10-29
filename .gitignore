@@ -4,3 +4,4 @@ __pycache__/
 .env
 index/
 .DS_Store
+data/raw/official/
