@@ -8,7 +8,7 @@ import unittest
 
 import numpy as np
 
-from scripts.benchmark import recall_at_k
+from scripts.benchmark import git_state, recall_at_k
 
 
 class Benchmark(unittest.TestCase):
@@ -36,6 +36,42 @@ class Benchmark(unittest.TestCase):
             self.assertEqual(int(rows["flat"]["timed_queries"]), 4)
             metadata = json.loads((root / "bench.meta.json").read_text())
             self.assertEqual(metadata["parameters"]["threads"], 1)
+            self.assertEqual(metadata["paths_relative_to"], "repository root")
+            for field in ("vectors", "queries", "out"):
+                self.assertFalse(Path(metadata["parameters"][field]).is_absolute())
+
+    def test_git_state_reports_clean_commit_then_local_modifications(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+            source = root / "source.py"
+            source.write_text("pass\n")
+            subprocess.run(["git", "add", "source.py"], cwd=root, check=True)
+            subprocess.run(["git", "-c", "user.name=Benchmark Test", "-c", "user.email=test@example.com",
+                            "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture"], cwd=root, check=True)
+            revision, dirty = git_state(root)
+            self.assertEqual(len(revision), 40)
+            self.assertFalse(dirty)
+            source.write_text("print('changed')\n")
+            self.assertEqual(git_state(root), (revision, True))
+
+    def test_require_clean_rejects_dirty_source_before_running_measurements(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+            (root / "source.py").write_text("pass\n")
+            subprocess.run(["git", "add", "source.py"], cwd=root, check=True)
+            subprocess.run(["git", "-c", "user.name=Benchmark Test", "-c", "user.email=test@example.com",
+                            "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", "fixture"], cwd=root, check=True)
+            (root / "source.py").write_text("modified\n")
+            from unittest import mock
+            from scripts import benchmark
+            with mock.patch.object(benchmark, "ROOT", root), \
+                    mock.patch("sys.argv", ["benchmark.py", "--require-clean"]), \
+                    mock.patch.object(benchmark, "load_vectors") as load:
+                with self.assertRaises(SystemExit):
+                    benchmark.main()
+                load.assert_not_called()
 
 
 if __name__ == "__main__":

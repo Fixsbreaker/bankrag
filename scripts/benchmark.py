@@ -5,6 +5,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -18,6 +19,24 @@ sys.path.insert(0, str(ROOT))
 import faiss
 import numpy as np
 from bankrag.index import KINDS, build_index, bytes_per_vector
+
+
+def git_state(root: Path) -> tuple[str | None, bool | None]:
+    """Снимок реального состояния репозитория до записи результатов."""
+    try:
+        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root,
+                                           text=True, stderr=subprocess.DEVNULL).strip()
+        status = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=normal"],
+                                         cwd=root, text=True, stderr=subprocess.DEVNULL)
+        return revision, bool(status)
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+
+
+def relative_parameter(value):
+    if isinstance(value, Path):
+        return Path(os.path.relpath(value.resolve(), ROOT)).as_posix()
+    return value
 
 
 def recall_at_k(expected: np.ndarray, actual: np.ndarray) -> float:
@@ -50,9 +69,13 @@ def main() -> None:
     parser.add_argument("--hnsw-m", type=int, default=32)
     parser.add_argument("--ef-search", type=int, default=64)
     parser.add_argument("--pq-m", type=int, default=16)
+    parser.add_argument("--require-clean", action="store_true", help="запуск только из чистого Git-коммита")
     args = parser.parse_args()
     if min(args.k, args.threads, args.repeats, args.hnsw_m, args.ef_search, args.pq_m) < 1 or args.warmup < 0:
         parser.error("параметры должны быть положительными; warmup может быть 0")
+    revision, local_changes = git_state(ROOT)
+    if args.require_clean and (revision is None or local_changes is not False):
+        parser.error("для --require-clean нужен чистый Git-коммит; сначала зафиксируйте изменения")
     faiss.omp_set_num_threads(args.threads)
     vectors, queries = load_vectors(args.vectors), load_vectors(args.queries)
     if vectors.shape[1] != queries.shape[1]:
@@ -99,10 +122,6 @@ def main() -> None:
         writer = csv.DictWriter(file, fieldnames=fields, lineterminator="\n")
         writer.writeheader()
         writer.writerows(rows)
-    try:
-        revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-    except (OSError, subprocess.SubprocessError):
-        revision = None
     cpu = platform.processor()
     if platform.system() == "Darwin":
         try:
@@ -111,7 +130,10 @@ def main() -> None:
             pass
     meta = {"timestamp_utc": datetime.now(timezone.utc).isoformat(), "system": platform.platform(),
             "cpu": cpu, "python": platform.python_version(), "numpy": np.__version__, "faiss": faiss.__version__,
-            "source_revision": revision, "local_changes": True, "parameters": {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()},
+            "source_revision": revision, "local_changes": local_changes,
+            "git_state_captured": "before benchmark output is written",
+            "paths_relative_to": "repository root",
+            "parameters": {key: relative_parameter(value) for key, value in vars(args).items()},
             "vectors_shape": list(vectors.shape), "queries_shape": list(queries.shape),
             "vectors_sha256": hashlib.sha256(args.vectors.read_bytes()).hexdigest(),
             "queries_sha256": hashlib.sha256(args.queries.read_bytes()).hexdigest(),

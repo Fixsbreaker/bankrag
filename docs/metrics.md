@@ -10,6 +10,30 @@
 
 Hit@5 — доля положительных вопросов, для которых размеченный фрагмент попал в первые пять результатов. MRR@5 — среднее обратной позиции первого правильного фрагмента; если его нет в топ-5, вклад равен нулю. Совпадения одного имени документа недостаточно.
 
+## Установка и повторение эксперимента
+
+Требуется Python 3.12. Команды выполняются из корня репозитория. Первый запуск скачивает модель эмбеддингов; платный API и LLM для оценки поиска не нужны. Для повторения окружения macOS ARM использован снимок зависимостей `requirements-eval-lock.txt`; для полного интерфейса и LLM устанавливаются зависимости из `requirements.txt`.
+
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-eval-lock.txt
+python scripts/download_docs.py
+python scripts/build_index.py
+python scripts/encode_queries.py --index index --questions eval/questions.jsonl
+python scripts/benchmark.py --repeats 30 --require-clean
+python scripts/eval_retrieval.py --reuse-queries
+python scripts/eval_retrieval.py --method hybrid --reuse-queries --out results/retrieval_hybrid.json
+python scripts/eval_keyword.py
+python -m unittest discover tests -v
+```
+
+Бенчмарк запускается до перезаписи отслеживаемых отчётов оценки: `--require-clean` проверяет состояние Git в начале запуска. В метаданных сохраняются полный SHA исходного коммита, реальное состояние рабочей копии и пути относительно корня репозитория. Результаты фиксируются отдельным коммитом после измерений, поэтому их `source_revision` ссылается на предшествующий коммит с измеренным кодом.
+
+По умолчанию `build_index.py` читает только `data/raw/official`; учебные файлы Демо-банка из родительского каталога в индекс не попадают. Набор имён файлов и SHA-256 должен точно совпасть с манифестом: отсутствующие, лишние или изменённые документы останавливают сборку до вычисления эмбеддингов. Для другого корпуса нужен соответствующий манифест через `--sources`.
+
+После слияния изменений необходимо выполнить `python scripts/download_docs.py`, затем `python scripts/build_index.py --raw data/raw/official`. Старый индекс несовместим с постраничными идентификаторами фрагментов и текущей разметкой. Старые массивы запросов тоже нужно пересоздать командой `encode_queries.py` из примера.
+
 ## Качество поиска
 
 | Метод | Hit@5 | MRR@5 |
