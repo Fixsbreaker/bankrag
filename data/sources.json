@@ -1,0 +1,26 @@
+[
+  {
+    "filename": "halyk_homebank_2026.pdf",
+    "url": "https://halykbank.kz/storage/app/media/Tarify/2026/1/Homebank%20%D0%BF%D0%BE%20%D0%A4%D0%9B.pdf",
+    "sha256": "bfd68fb847ee9adbf54b9bb5d72cb558fc0bfdd52eb8c7f48181a0d22e7824fe",
+    "downloaded_on": "2026-10-29",
+    "pages": 2,
+    "note": "Research snapshot; current applicability not established. Questions must refer to this document version."
+  },
+  {
+    "filename": "halyk_rko_2025.pdf",
+    "url": "https://halykbank.kz/storage/app/media/Tarify/2025/9/RUS_FL_RKO.pdf",
+    "sha256": "33a8898fff4779ec8ba537ba791ef5f3ccf4c734447c492e4923d7e99f77fbef",
+    "downloaded_on": "2026-10-29",
+    "pages": 4,
+    "note": "Research snapshot; current applicability not established. Questions must refer to this document version."
+  },
+  {
+    "filename": "kaspi_tariffs_snapshot.pdf",
+    "url": "https://www.kaspibank.kz/news/file/223818993575.pdf",
+    "sha256": "ec0f7904f5c44491957e5c71922d1accebd9fce6578e686e8ff67972881db2df",
+    "downloaded_on": "2026-10-29",
+    "pages": 61,
+    "note": "Research snapshot; current applicability not established. Questions must refer to this document version."
+  }
+]

@@ -41,10 +41,18 @@ def load_corpus(raw_dir: Path, max_chars: int = 400) -> list[dict]:
     for path in sorted(raw_dir.rglob("*")):
         if path.suffix.lower() not in SUPPORTED:
             continue
-        for i, chunk in enumerate(split_into_chunks(read_document(path), max_chars)):
-            corpus.append({
-                "chunk_id": f"{path.name}#{i}",
-                "source": str(path.relative_to(raw_dir)),
-                "text": chunk,
-            })
+        if path.suffix.lower() == ".pdf":
+            from pypdf import PdfReader
+            pages = [(number, page.extract_text() or "") for number, page in enumerate(PdfReader(path).pages, 1)]
+        else:
+            pages = [(None, read_document(path))]
+        for page_number, text in pages:
+            for i, chunk in enumerate(split_into_chunks(text, max_chars)):
+                page_id = f"p{page_number}:" if page_number is not None else ""
+                corpus.append({
+                    "chunk_id": f"{path.name}#{page_id}{i}",
+                    "source": str(path.relative_to(raw_dir)),
+                    "text": chunk,
+                    **({"page": page_number} if page_number is not None else {}),
+                })
     return corpus

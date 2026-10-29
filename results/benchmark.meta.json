@@ -1,0 +1,40 @@
+{
+  "timestamp_utc": "2026-10-29T12:37:21.845536+00:00",
+  "system": "macOS-15.6.1-arm64-arm-64bit",
+  "cpu": "Apple M2 Pro",
+  "python": "3.12.14",
+  "numpy": "2.5.4",
+  "faiss": "1.15.1",
+  "source_revision": "654d97a2b0e1ca904fc26a3d3d5436353a92556b",
+  "local_changes": true,
+  "parameters": {
+    "vectors": "/Users/datkha/Documents/Codex/2026-10-29/cv/work/bankrag/index/vectors.npy",
+    "queries": "/Users/datkha/Documents/Codex/2026-10-29/cv/work/bankrag/index/query_vectors.npy",
+    "out": "/Users/datkha/Documents/Codex/2026-10-29/cv/work/bankrag/results/benchmark.csv",
+    "k": 5,
+    "threads": 1,
+    "repeats": 30,
+    "warmup": 2,
+    "hnsw_m": 32,
+    "ef_search": 64,
+    "pq_m": 16
+  },
+  "vectors_shape": [
+    710,
+    384
+  ],
+  "queries_shape": [
+    25,
+    384
+  ],
+  "vectors_sha256": "519fcfcf8024a5e4e7ad695ae28c60e6f7c5d0a9b6321f3d1e59eb62b4819be9",
+  "queries_sha256": "56acf59fca710c87da01902e8f43b779baf2b311c808118a23ce81f27794eb54",
+  "notes": [
+    "Search-only single-query latency; excludes embedding, LLM and disk IO.",
+    "index_bytes is serialized index size, not peak RAM or process RSS.",
+    "bytes_per_vector is code payload only; total_bytes_per_vector includes index overhead.",
+    "ANN recall compares IDs with Flat, not answer correctness; ties can affect recall.",
+    "Four configurations do not constitute equal-memory SQ/PQ comparison.",
+    "Small-corpus results are exploratory; PQ training can be under-sampled."
+  ]
+}
