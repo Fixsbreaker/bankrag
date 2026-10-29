@@ -1,23 +1,26 @@
 {
-  "timestamp_utc": "2026-10-29T12:37:21.845536+00:00",
+  "timestamp_utc": "2026-10-29T13:16:27.949628+00:00",
   "system": "macOS-15.6.1-arm64-arm-64bit",
   "cpu": "Apple M2 Pro",
   "python": "3.12.14",
   "numpy": "2.5.4",
   "faiss": "1.15.1",
-  "source_revision": "654d97a2b0e1ca904fc26a3d3d5436353a92556b",
-  "local_changes": true,
+  "source_revision": "ef143fa5bf12fcff9defb40b3d243a45e5945dae",
+  "local_changes": false,
+  "git_state_captured": "before benchmark output is written",
+  "paths_relative_to": "repository root",
   "parameters": {
-    "vectors": "/Users/datkha/Documents/Codex/2026-10-29/cv/work/bankrag/index/vectors.npy",
-    "queries": "/Users/datkha/Documents/Codex/2026-10-29/cv/work/bankrag/index/query_vectors.npy",
-    "out": "/Users/datkha/Documents/Codex/2026-10-29/cv/work/bankrag/results/benchmark.csv",
+    "vectors": "index/vectors.npy",
+    "queries": "index/query_vectors.npy",
+    "out": "results/benchmark.csv",
     "k": 5,
     "threads": 1,
     "repeats": 30,
     "warmup": 2,
     "hnsw_m": 32,
     "ef_search": 64,
-    "pq_m": 16
+    "pq_m": 16,
+    "require_clean": true
   },
   "vectors_shape": [
     710,

@@ -1209,6 +1209,7 @@
     }
   ],
   "model": "intfloat/multilingual-e5-small",
+  "method": "vector",
   "corpus_chunks": 710,
   "corpus_documents": 3,
   "questions_sha256": "2a44e72bd1bafeac22c25ffbcd4c2b6a0026b4655b9632762e0cac97af332331",
