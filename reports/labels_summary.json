@@ -1,0 +1,47 @@
+{
+  "variant": "A",
+  "train_end": "2022-09-06 13:36:00",
+  "val_end": "2022-09-08 16:12:00",
+  "all": {
+    "transactions": 5078345,
+    "laundering_transactions": 5177,
+    "accounts": 515088,
+    "drop": 1003,
+    "other_labeled": 5354,
+    "clean": 508731
+  },
+  "train": {
+    "transactions": 3046861,
+    "laundering_transactions": 2297,
+    "accounts": 512713,
+    "drop": 305,
+    "other_labeled": 2865,
+    "clean": 509543
+  },
+  "val": {
+    "transactions": 1015602,
+    "laundering_transactions": 1082,
+    "accounts": 236106,
+    "drop": 148,
+    "other_labeled": 1385,
+    "clean": 234573
+  },
+  "test": {
+    "transactions": 1015882,
+    "laundering_transactions": 1798,
+    "accounts": 356396,
+    "drop": 325,
+    "other_labeled": 1876,
+    "clean": 354195
+  },
+  "test_without_tail": {
+    "transactions": 1014774,
+    "laundering_transactions": 1143,
+    "accounts": 356257,
+    "drop": 121,
+    "other_labeled": 1550,
+    "clean": 354586
+  },
+  "test_drops_also_in_train": 16,
+  "all_drops_not_drop_in_any_single_period": 263
+}
