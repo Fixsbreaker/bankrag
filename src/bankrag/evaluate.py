@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
 
 from bankrag.faiss_safe import faiss  # noqa: F401  # должен загружаться раньше scikit-learn
 
@@ -165,6 +166,43 @@ def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, p
     return result
 
 
+def evaluate_scenarios(processed: Path, rule: Rule, threshold: float, scaler: VectorScaler, config: dict) -> dict | None:
+    """Метрики на казахстанских сценариях: модель на них не обучалась, пороги те же."""
+    if not (processed / "kz_scores.parquet").exists():
+        return None
+    features = pd.read_parquet(processed / "kz_features.parquet")
+    scores = pd.read_parquet(processed / "kz_scores.parquet", columns=["account_id", "risk_score"])
+    accounts = pd.read_parquet(processed / "kz_accounts.parquet")
+    frame = features.merge(scores, on="account_id", validate="one_to_one")
+    network_of = accounts.set_index("account_id")["network_id"]
+    is_drop = frame["label"] == DROP
+    background = ~frame["account_id"].isin(accounts["account_id"])
+
+    def detection(flags: pd.Series) -> dict:
+        hit = frame.loc[flags & is_drop, "account_id"]
+        return {"drops_found": len(hit), "networks_found": int(network_of.reindex(hit).nunique()),
+                "background_alerts": int((flags & background).sum())}
+
+    ordered = frame.sort_values("risk_score", ascending=False, ignore_index=True)
+    best_rank = int(ordered.index[ordered["label"] == DROP].min()) + 1
+
+    settings = config["similarity"]
+    k = settings["k"]
+    vectors = scaler.transform(frame)
+    metric = config["evaluate"]["similarity_metric"]
+    index = build_hnsw(vectors, metric, settings["m"], settings["ef_construction"], settings["ef_search"])
+    similar = SimilarityIndex(index, frame["account_id"].tolist(), vectors, metric)
+    return {
+        "networks": int(accounts["network_id"].nunique()), "drops": int(is_drop.sum()),
+        "accounts_generated": len(accounts), "background_accounts": int(background.sum()),
+        "model": detection(frame["risk_score"] >= threshold),
+        "rule": detection(rule.flags(frame)),
+        "model_max_drop_score": float(frame.loc[is_drop, "risk_score"].max()),
+        "model_best_drop_rank": best_rank,
+        "similarity": precision_at_k(similar, frame.set_index("account_id")["label"], k),
+    }
+
+
 def percent(value: float) -> str:
     return f"{value * 100:.1f}%".replace(".", ",")
 
@@ -241,7 +279,21 @@ def render_markdown(metrics: dict) -> str:
               "у нас метка стоит на счетах и считается только за 48-часовое окно. "
               "Общее только разбиение: тоже 60/20/20 по порядку транзакций. "
               "Их тест включает хвост, поэтому ближе к нему наш вариант с хвостом, но и он не сопоставим.", "",
-              "## Казахстанские сценарии", "", "Ещё не посчитаны (этап 7).", ""]
+              "## Казахстанские сценарии", ""]
+    kz = metrics.get("scenarios")
+    if kz is None:
+        lines += ["Ещё не посчитаны.", ""]
+    else:
+        lines += ["Сети сгенерированы командой: параметры заданы в конфигурации и не откалиброваны на реальных данных. "
+                  "Модель на них не обучалась, пороги те же, что на тесте IBM.", "",
+                  f"Сетей {kz['networks']}, дропов {kz['drops']}, счетов фона {thousands(kz['background_accounts'])}.", "",
+                  "| Метод | Найдено дропов | Найдено сетей | Тревог на счетах фона |", "| --- | --- | --- | --- |"]
+        for name, key in (("LightGBM", "model"), ("Правило", "rule")):
+            row = kz[key]
+            lines.append(f"| {name} | {row['drops_found']} из {kz['drops']} | {row['networks_found']} из {kz['networks']} | {row['background_alerts']} |")
+        score = f"{kz['model_max_drop_score']:.3f}".replace(".", ",")
+        lines += ["", f"Наибольшая оценка дропа {score}, лучшее место дропа в очереди {kz['model_best_drop_rank']}. "
+                  f"Precision@{k} «Найти похожие» от дропов сценариев: {percent(kz['similarity'][f'precision_at_{k}'])}.", ""]
     return "\n".join(lines)
 
 
@@ -263,6 +315,7 @@ def main() -> None:
         metrics["windows"][window] = evaluate_window(window, features, scores, patterns, rule, threshold, scaler, config)
 
     metrics["typology"] = evaluate_typologies(MAIN_WINDOW, features, patterns, config)
+    metrics["scenarios"] = evaluate_scenarios(processed, rule, threshold, scaler, config)
 
     (reports / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     (reports / "metrics.md").write_text(render_markdown(metrics), encoding="utf-8")
