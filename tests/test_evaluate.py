@@ -11,6 +11,8 @@ from bankrag.evaluate import (
     drop_pattern_types,
     extra_drops_at_same_alerts,
     queue_composition,
+    typology_match,
+    typology_name,
 )
 from bankrag.labels import CLEAN, DROP, OTHER_LABELED
 
@@ -53,3 +55,14 @@ def test_pattern_types_keep_only_given_drops() -> None:
     patterns = pd.DataFrame({"from_account": ["A", "M", "X"], "to_account": ["M", "B", "Y"],
                              "pattern_type": ["STACK", "CYCLE", "CYCLE"]})
     assert drop_pattern_types(patterns, {"M"}) == {"CYCLE": {"M"}, "STACK": {"M"}}
+
+
+def test_typology_name_reads_the_start_of_a_fragment() -> None:
+    assert typology_name("Fan-in, сбор. Один счёт получает переводы.") == "FAN-IN"
+
+
+def test_typology_match_counts_any_of_the_account_schemes() -> None:
+    result = typology_match([["CYCLE", "STACK", "RANDOM"], ["STACK", "RANDOM", "FAN-IN"]],
+                            [{"CYCLE"}, {"FAN-IN", "CYCLE"}], ["CYCLE", "STACK", "RANDOM", "FAN-IN"], 100, 1)
+    assert result["top1"] == pytest.approx(0.5)
+    assert result["top3"] == pytest.approx(1.0)

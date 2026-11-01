@@ -55,19 +55,19 @@
       ],
       "similarity": {
         "metric": "cosine",
-        "build_seconds": 5.265519083943218,
+        "build_seconds": 39.22126837493852,
         "starts": 97,
         "precision_at_10": 0.10721649484536085,
         "any_labeled_at_10": 0.19072164948453607,
         "prevalence": 0.00027366573846019293,
-        "query_ms_mean": 0.091709726722911,
-        "query_ms_p95": 0.12238759081810711,
+        "query_ms_mean": 0.09777860273607075,
+        "query_ms_p95": 0.13279608683660626,
         "recall_vs_exact": 0.9290999999999999,
         "queries": 1000,
         "by_pattern": {
           "BIPARTITE": {
             "starts": 22,
-            "precision_at_10": 0.03636363636363636
+            "precision_at_10": 0.03636363636363637
           },
           "CYCLE": {
             "starts": 43,
@@ -149,13 +149,13 @@
       ],
       "similarity": {
         "metric": "cosine",
-        "build_seconds": 5.042170166969299,
+        "build_seconds": 32.397036750102416,
         "starts": 325,
         "precision_at_10": 0.3467692307692308,
         "any_labeled_at_10": 0.4723076923076923,
         "prevalence": 0.0009119069798763173,
-        "query_ms_mean": 0.09383379062637687,
-        "query_ms_p95": 0.12825424782931805,
+        "query_ms_mean": 0.07698322203941643,
+        "query_ms_p95": 0.1011017127893865,
         "recall_vs_exact": 0.929,
         "queries": 1000,
         "by_pattern": {
@@ -173,7 +173,7 @@
           },
           "FAN-OUT": {
             "starts": 28,
-            "precision_at_10": 0.09642857142857142
+            "precision_at_10": 0.09642857142857143
           },
           "GATHER-SCATTER": {
             "starts": 48,
@@ -185,7 +185,7 @@
           },
           "SCATTER-GATHER": {
             "starts": 106,
-            "precision_at_10": 0.3754716981132076
+            "precision_at_10": 0.3754716981132075
           },
           "STACK": {
             "starts": 56,
@@ -195,5 +195,12 @@
         "drops_without_pattern": 1
       }
     }
+  },
+  "typology": {
+    "accounts": 96,
+    "top1": 0.2604166666666667,
+    "top3": 0.4479166666666667,
+    "random_top1": 0.2645,
+    "random_top3": 0.52715
   }
 }

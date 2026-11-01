@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import time
 
+from bankrag.faiss_safe import faiss  # noqa: F401  # должен загружаться раньше scikit-learn
+
 import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, f1_score, precision_score, recall_score
@@ -75,6 +77,47 @@ def precision_for_starts(similar: SimilarityIndex, labels: pd.Series, starts: se
         ids, _ = similar.neighbors_of(similar.positions[account], k)
         values.append((position_labels[ids] == DROP).sum() / k)
     return float(np.mean(values))
+
+
+def typology_name(fragment_text: str) -> str:
+    """Тип схемы из начала фрагмента: «Fan-in, сбор. ...» → FAN-IN."""
+    return fragment_text.split(",")[0].upper()
+
+
+def typology_match(found: list[list[str]], truth: list[set[str]], all_types: list[str],
+                   rounds: int, seed: int) -> dict:
+    """Как часто предложенные типологии совпадают со схемой счёта, и что дал бы случайный выбор."""
+    top1 = float(np.mean([names[0] in types for names, types in zip(found, truth)]))
+    top3 = float(np.mean([bool(set(names[:3]) & types) for names, types in zip(found, truth)]))
+    random = np.random.default_rng(seed)
+    random_top1 = random_top3 = 0
+    for _ in range(rounds):
+        types = truth[random.integers(len(truth))]
+        chosen = random.choice(all_types, 3, replace=False)
+        random_top1 += chosen[0] in types
+        random_top3 += bool(set(chosen) & types)
+    return {"accounts": len(found), "top1": top1, "top3": top3,
+            "random_top1": random_top1 / rounds, "random_top3": random_top3 / rounds}
+
+
+def evaluate_typologies(window: str, features: pd.DataFrame, patterns: pd.DataFrame, config: dict) -> dict:
+    """Проверяет подбор типологии на дропах окна, у которых схема известна."""
+    from bankrag.kb_index import KnowledgeBase, e5_embedder
+    from bankrag.report import reasons_to_query
+
+    processed = ROOT / config["paths"]["processed_dir"]
+    scores = pd.read_parquet(processed / "scores.parquet", columns=["account_id", "window", "reasons"])
+    reasons = scores[scores["window"] == window].set_index("account_id")["reasons"]
+    frame = features[(features["window"] == window) & (features["label"] == DROP)]
+    by_type = drop_pattern_types(patterns, set(frame["account_id"]))
+    account_types: dict[str, set[str]] = {}
+    for name, accounts in by_type.items():
+        for account in accounts:
+            account_types.setdefault(account, set()).add(name)
+    kb = KnowledgeBase.load(ROOT / "models", e5_embedder())
+    found = [[typology_name(f["text"]) for f in kb.search(reasons_to_query(list(reasons[a])), 3, "typology")]
+             for a in account_types]
+    return typology_match(found, list(account_types.values()), sorted(by_type), 20000, config["seed"])
 
 
 def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, patterns: pd.DataFrame,
@@ -184,6 +227,12 @@ def render_markdown(metrics: dict) -> str:
     for name, row in similarity["by_pattern"].items():
         lines.append(f"| {name} | {row['starts']} | {percent(row[f'precision_at_{k}'])} |")
     lines += ["", f"Дропов, которых нет в файле паттернов: {similarity['drops_without_pattern']} из {main['drops']}.", "",
+              "## Подбор типологии в справке", "",
+              "Совпадение предложенных фрагментов со схемой счёта на дропах теста без хвоста.", "",
+              "| | Первый фрагмент | Первые три |", "| --- | --- | --- |",
+              f"| Поиск по причинам | {percent(metrics['typology']['top1'])} | {percent(metrics['typology']['top3'])} |",
+              f"| Случайный выбор | {percent(metrics['typology']['random_top1'])} | {percent(metrics['typology']['random_top3'])} |", "",
+              "Справка показывает близкие по тексту фрагменты базы знаний, но не определяет тип схемы.", "",
               "## Сравнение со статьёй IBM", "",
               "Altman et al., [Realistic Synthetic Financial Transactions for Anti-Money Laundering Models]"
               "(https://arxiv.org/abs/2306.16424), таблица 2, HI-Small, F1 миноритарного класса: "
@@ -212,6 +261,8 @@ def main() -> None:
     metrics = {"k": config["similarity"]["k"], "rule": rule.__dict__, "model_threshold": threshold, "windows": {}}
     for window in WINDOWS:
         metrics["windows"][window] = evaluate_window(window, features, scores, patterns, rule, threshold, scaler, config)
+
+    metrics["typology"] = evaluate_typologies(MAIN_WINDOW, features, patterns, config)
 
     (reports / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     (reports / "metrics.md").write_text(render_markdown(metrics), encoding="utf-8")
