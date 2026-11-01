@@ -7,6 +7,7 @@ LightGBM здесь не загружается: оценки и причины 
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -140,6 +141,12 @@ def render_similar(account_id: str, dataset: str, queue: pd.DataFrame, show_labe
     st.iframe(network_html(account_id, similar, accounts, grouped), height=540)
 
 
+def quote(text: str) -> str:
+    """Цитата в markdown: номер части статьи остаётся текстом, а не становится маркером списка."""
+    lines = [re.sub(r"^(\d+)\.", r"\1\\.", line) for line in text.split("\n")]
+    return "> " + "  \n> ".join(lines)
+
+
 def render_report(row: pd.Series, config: dict, rule: Rule) -> None:
     """Справка: дословные фрагменты базы знаний с источником, без генерации текста."""
     st.subheader("Справка")
@@ -159,13 +166,15 @@ def render_report(row: pd.Series, config: dict, rule: Rule) -> None:
     if report.no_typologies_message:
         st.write(report.no_typologies_message)
     for fragment in report.typologies:
-        st.markdown(f"> {fragment['text']}")
+        st.markdown(quote(fragment["text"]))
         st.caption(f"Источник: {fragment['source']} · близость {fragment['score']:.2f}")
     st.markdown("**Нормы**")
+    st.caption("Текст приведён для сведения. Близость по тексту не означает состав правонарушения "
+               "и не указывает нужную часть статьи: правовую оценку даёт уполномоченный орган.")
     if report.no_norms_message:
         st.write(report.no_norms_message)
     for fragment in report.norms:
-        st.markdown(f"> {fragment['text']}")
+        st.markdown(quote(fragment["text"]))
         st.caption(f"{fragment['title']}. Источник: {fragment['source']} · близость {fragment['score']:.2f}")
 
 
