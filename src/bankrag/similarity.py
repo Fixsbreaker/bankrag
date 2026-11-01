@@ -11,12 +11,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-import faiss
 import networkx as nx
 import numpy as np
 import pandas as pd
 
 from bankrag.data_loader import ROOT, load_config
+from bankrag.faiss_safe import faiss
 from bankrag.features import FEATURE_COLUMNS
 from bankrag.graph import build_edges, estimate_usd_rates, subgraph_between
 from bankrag.labels import DROP, OTHER_LABELED, split_cutoffs
@@ -159,14 +159,11 @@ def measure(index: faiss.Index, vectors: np.ndarray, metric: str, k: int, querie
     """Время одного запроса в один поток и полнота HNSW относительно точного поиска."""
     chosen = np.random.default_rng(seed).choice(len(vectors), size=min(queries, len(vectors)), replace=False)
     prepared = _prepare(vectors, metric)
-    threads = faiss.omp_get_max_threads()
-    faiss.omp_set_num_threads(1)
     times = []
     for i in chosen:
         started = time.perf_counter()
         index.search(prepared[i:i + 1], k)
         times.append((time.perf_counter() - started) * 1000)
-    faiss.omp_set_num_threads(threads)
 
     exact = faiss.IndexFlatL2(vectors.shape[1]) if metric == "l2" else faiss.IndexFlatIP(vectors.shape[1])
     exact.add(prepared)

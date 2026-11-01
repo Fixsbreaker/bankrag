@@ -57,7 +57,7 @@ def describe_reason(feature: str, value: float) -> str:
             "transit_ratio": "входящих переводов нет",
             "forward_minutes_median": "после входящих переводов исходящих не было",
             "forward_minutes_min": "после входящих переводов исходящих не было",
-        }.get(feature, f"нет данных: {feature}")
+        }.get(feature, "переводов с другими счетами нет")
     return REASON_TEMPLATES[feature](float(value))
 
 
