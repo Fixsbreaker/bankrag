@@ -8,6 +8,12 @@ KAGGLE="$ROOT/.venv/bin/kaggle"
 DATASET="ealtman2019/ibm-transactions-for-anti-money-laundering-aml"
 RAW="$ROOT/data/raw"
 
+if [ ! -s "$HOME/.kaggle/access_token" ] && [ ! -s "$HOME/.kaggle/kaggle.json" ] && [ -z "${KAGGLE_API_TOKEN:-}" ]; then
+  echo "Нет токена Kaggle. Создайте его на kaggle.com: Settings → API → Create New Token," >&2
+  echo "и сохраните в ~/.kaggle/access_token (chmod 600)." >&2
+  exit 1
+fi
+
 mkdir -p "$RAW"
 for name in HI-Small_Trans.csv HI-Small_Patterns.txt HI-Small_accounts.csv; do
   if [ -s "$RAW/$name" ]; then

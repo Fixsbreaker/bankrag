@@ -40,7 +40,7 @@ SIGNAL_FILTERS = {"счета с сигналом": "has_signal", "только 
                   "только быстрый транзит": "rule_signal", "все счета": None}
 SCENARIO_NOTE = ("Сети сгенерированы командой поверх фона из IBM, параметры не откалиброваны на реальных данных. "
                  "Модель на них не обучалась.")
-FEEDBACK_PATH = ROOT / "data" / "feedback.sqlite"
+FEEDBACK_PATH = ROOT / "data" / "feedback" / "feedback.sqlite"
 LABEL_TITLES = {DROP: "дроп", OTHER_LABELED: "прочий помеченный", "clean": "чистый"}
 DECISION_TITLES = {CONFIRMED: "подтвердил", REJECTED: "отклонил"}
 CARD_FEATURES = ["unique_senders", "unique_receivers", "in_count", "out_count", "transit_ratio", "forward_minutes_median"]

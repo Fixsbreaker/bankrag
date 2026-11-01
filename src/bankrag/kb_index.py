@@ -48,7 +48,11 @@ def e5_embedder(model_name: str = MODEL_NAME) -> Embedder:
     """Эмбеддинги e5 на CPU. Модель требует префиксы query: и passage: перед текстом."""
     from sentence_transformers import SentenceTransformer
 
-    model = SentenceTransformer(model_name, device="cpu")
+    # После первой загрузки модель берётся из кеша, интернет не нужен.
+    try:
+        model = SentenceTransformer(model_name, device="cpu", local_files_only=True)
+    except OSError:
+        model = SentenceTransformer(model_name, device="cpu")
 
     def embed(texts: list[str], kind: str) -> np.ndarray:
         vectors = model.encode([f"{kind}: {text}" for text in texts], normalize_embeddings=True)

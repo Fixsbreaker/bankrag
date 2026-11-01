@@ -13,3 +13,4 @@ models/
 index/
 *.parquet
 *.sqlite
+data/feedback/
