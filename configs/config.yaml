@@ -52,3 +52,7 @@ similarity:
   ef_construction: 200
   ef_search: 128
   timing_queries: 1000
+
+evaluate:
+  bootstrap_rounds: 200
+  queue_sizes: [100, 500]
