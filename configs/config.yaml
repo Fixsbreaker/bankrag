@@ -17,5 +17,31 @@ split:
 
 features:
   window_hours: 48
+  # Окна обучения перекрываются, валидация и тест используют по одному окну.
+  train_step_hours: 12
   # Ночь: от первого часа включительно до второго не включая.
   night_hours: [0, 6]
+
+rule:
+  grid:
+    min_senders: [1, 2, 3, 4, 5, 8, 12]
+    min_transit: [0.3, 0.5, 0.7, 0.8, 0.9, 0.95]
+    max_forward_minutes: [15, 60, 240, 720, 1440, 2880]
+
+model:
+  num_boost_round: 1500
+  early_stopping_rounds: 150
+  # Настройки выбраны по PR-AUC на валидации; тест при выборе не использовался.
+  params:
+    objective: binary
+    metric: average_precision
+    learning_rate: 0.02
+    num_leaves: 7
+    min_data_in_leaf: 20
+    lambda_l2: 5
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 1
+    # Дропов в тысячи раз меньше чистых. Полная балансировка (is_unbalance) давала
+    # PR-AUC 0,02, вес 10 работает лучше.
+    scale_pos_weight: 10

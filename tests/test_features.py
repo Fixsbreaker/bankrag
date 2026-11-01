@@ -102,6 +102,16 @@ def test_windows_do_not_see_the_future() -> None:
     assert windows[3].end - windows[3].start == pd.Timedelta(hours=48)
 
 
+def test_overlapping_train_windows_stay_inside_train_period() -> None:
+    windows = make_windows(pd.Timestamp("2022-09-01"), pd.Timestamp("2022-09-06"), pd.Timestamp("2022-09-08 12:00"),
+                           pd.Timestamp("2022-09-11"), pd.Timestamp("2022-09-18"), hours=48, train_step_hours=24)
+    train = [w for w in windows if w.period == "train"]
+    assert len(train) == 4
+    assert all(w.start >= pd.Timestamp("2022-09-01") and w.end <= pd.Timestamp("2022-09-06") for w in train)
+    assert all(w.end - w.start == pd.Timedelta(hours=48) for w in train)
+    assert all(w.known_until == w.start for w in train)
+
+
 def test_subgraph_keeps_only_transfers_inside_the_network(edges: pd.DataFrame) -> None:
     graph = subgraph_between(edges, ["A", "M", "C"])
     assert set(graph.nodes) == {"A", "M", "C"}

@@ -30,6 +30,36 @@
       "clean": 233960
     },
     "train_2": {
+      "start": "2022-09-04 01:36:00",
+      "end": "2022-09-06 01:36:00",
+      "transactions": 708239,
+      "accounts": 235065,
+      "known_drops": 85,
+      "drop": 77,
+      "other_labeled": 1207,
+      "clean": 233781
+    },
+    "train_3": {
+      "start": "2022-09-03 13:36:00",
+      "end": "2022-09-05 13:36:00",
+      "transactions": 572271,
+      "accounts": 210417,
+      "known_drops": 69,
+      "drop": 65,
+      "other_labeled": 1140,
+      "clean": 209212
+    },
+    "train_4": {
+      "start": "2022-09-03 01:36:00",
+      "end": "2022-09-05 01:36:00",
+      "transactions": 433674,
+      "accounts": 169678,
+      "known_drops": 42,
+      "drop": 69,
+      "other_labeled": 1155,
+      "clean": 168454
+    },
+    "train_5": {
       "start": "2022-09-02 13:36:00",
       "end": "2022-09-04 13:36:00",
       "transactions": 650881,
@@ -38,6 +68,36 @@
       "drop": 68,
       "other_labeled": 1179,
       "clean": 264842
+    },
+    "train_6": {
+      "start": "2022-09-02 01:36:00",
+      "end": "2022-09-04 01:36:00",
+      "transactions": 925295,
+      "accounts": 351024,
+      "known_drops": 18,
+      "drop": 54,
+      "other_labeled": 1175,
+      "clean": 349795
+    },
+    "train_7": {
+      "start": "2022-09-01 13:36:00",
+      "end": "2022-09-03 13:36:00",
+      "transactions": 1226564,
+      "accounts": 403937,
+      "known_drops": 7,
+      "drop": 50,
+      "other_labeled": 1184,
+      "clean": 402703
+    },
+    "train_8": {
+      "start": "2022-09-01 01:36:00",
+      "end": "2022-09-03 01:36:00",
+      "transactions": 1532448,
+      "accounts": 446649,
+      "known_drops": 0,
+      "drop": 42,
+      "other_labeled": 1068,
+      "clean": 445539
     },
     "val": {
       "start": "2022-09-06 16:12:00",

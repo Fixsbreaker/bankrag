@@ -39,20 +39,25 @@ class Window:
 
 
 def make_windows(first: pd.Timestamp, train_end: pd.Timestamp, val_end: pd.Timestamp,
-                 tail_start: pd.Timestamp, last: pd.Timestamp, hours: int) -> list[Window]:
+                 tail_start: pd.Timestamp, last: pd.Timestamp, hours: int,
+                 train_step_hours: int | None = None) -> list[Window]:
     """Окна обучения идут назад от конца периода; валидация и тест берут одно окно той же длины.
+
+    Шаг короче окна даёт перекрывающиеся окна обучения: один счёт встречается в них
+    несколько раз, зато цепочки, разрезанные одной границей, целиком попадают в другое окно.
 
     Для окон обучения известны только дропы из более раннего времени, для валидации и
     теста — все дропы обучающего периода. Так признак ведёт себя одинаково во всех окнах.
     """
     length = pd.Timedelta(hours=hours)
+    step = pd.Timedelta(hours=train_step_hours or hours)
     windows = []
     end = train_end
     number = 0
     while end - length >= first:
         number += 1
         windows.append(Window(f"train_{number}", "train", end - length, end, end - length))
-        end -= length
+        end -= step
     if not windows:
         raise ValueError("окно длиннее обучающего периода")
     windows.append(Window("val", "val", val_end - length, val_end, train_end))
@@ -147,7 +152,7 @@ def main() -> None:
 
     windows = make_windows(transactions["timestamp"].min(), train_end, val_end,
                            pd.Timestamp(config["split"]["tail_start"]), transactions["timestamp"].max(),
-                           config["features"]["window_hours"])
+                           config["features"]["window_hours"], config["features"]["train_step_hours"])
     night = tuple(config["features"]["night_hours"])
 
     frames = []
