@@ -139,7 +139,7 @@ def render_markdown(metrics: dict) -> str:
     main = metrics["windows"][MAIN_WINDOW]
     lines += ["## Главный результат: тест без хвоста", "",
               f"Счетов {thousands(main['accounts'])}, дропов {main['drops']}, прочих помеченных (не считаются) "
-              f"{thousands(main['other_labeled_excluded'])}. Доля дропов {main['prevalence'] * 100:.3f}%.".replace(".", ","),
+              f"{thousands(main['other_labeled_excluded'])}. Доля дропов {main['prevalence'] * 100:.3f}%.".replace("0.", "0,"),
               "", "Тест с хвостом показан только для сравнения: после 10 сентября почти все переводы помечены, "
               "поэтому там задача заметно легче.", ""]
     lines += ["## Правило и модель", "",

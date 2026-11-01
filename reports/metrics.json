@@ -55,19 +55,19 @@
       ],
       "similarity": {
         "metric": "cosine",
-        "build_seconds": 5.020855916896835,
+        "build_seconds": 5.032110875006765,
         "starts": 97,
         "precision_at_10": 0.10721649484536085,
         "any_labeled_at_10": 0.19072164948453607,
         "prevalence": 0.00027366573846019293,
-        "query_ms_mean": 0.09080301388166845,
-        "query_ms_p95": 0.12250198051333427,
+        "query_ms_mean": 0.09340777969919145,
+        "query_ms_p95": 0.12470762012526389,
         "recall_vs_exact": 0.9290999999999999,
         "queries": 1000,
         "by_pattern": {
           "BIPARTITE": {
             "starts": 22,
-            "precision_at_10": 0.03636363636363637
+            "precision_at_10": 0.03636363636363636
           },
           "CYCLE": {
             "starts": 43,
@@ -83,7 +83,7 @@
           },
           "GATHER-SCATTER": {
             "starts": 23,
-            "precision_at_10": 0.05217391304347827
+            "precision_at_10": 0.05217391304347826
           },
           "RANDOM": {
             "starts": 35,
@@ -95,7 +95,7 @@
           },
           "STACK": {
             "starts": 27,
-            "precision_at_10": 0.07777777777777778
+            "precision_at_10": 0.07777777777777777
           }
         },
         "drops_without_pattern": 1
@@ -149,23 +149,23 @@
       ],
       "similarity": {
         "metric": "cosine",
-        "build_seconds": 5.041025583865121,
+        "build_seconds": 5.174189042067155,
         "starts": 325,
         "precision_at_10": 0.3467692307692308,
         "any_labeled_at_10": 0.4723076923076923,
         "prevalence": 0.0009119069798763173,
-        "query_ms_mean": 0.09858604241162539,
-        "query_ms_p95": 0.1352647435851395,
+        "query_ms_mean": 0.09350911527872086,
+        "query_ms_p95": 0.1300482195802033,
         "recall_vs_exact": 0.929,
         "queries": 1000,
         "by_pattern": {
           "BIPARTITE": {
             "starts": 36,
-            "precision_at_10": 0.06388888888888888
+            "precision_at_10": 0.0638888888888889
           },
           "CYCLE": {
             "starts": 106,
-            "precision_at_10": 0.20094339622641513
+            "precision_at_10": 0.2009433962264151
           },
           "FAN-IN": {
             "starts": 30,
@@ -173,7 +173,7 @@
           },
           "FAN-OUT": {
             "starts": 28,
-            "precision_at_10": 0.09642857142857143
+            "precision_at_10": 0.09642857142857142
           },
           "GATHER-SCATTER": {
             "starts": 48,
@@ -181,11 +181,11 @@
           },
           "RANDOM": {
             "starts": 85,
-            "precision_at_10": 0.35058823529411764
+            "precision_at_10": 0.3505882352941177
           },
           "SCATTER-GATHER": {
             "starts": 106,
-            "precision_at_10": 0.3754716981132076
+            "precision_at_10": 0.3754716981132075
           },
           "STACK": {
             "starts": 56,
