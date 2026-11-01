@@ -16,8 +16,8 @@ def _features() -> pd.DataFrame:
     """Две группы счетов с разным поведением: по 10 посредников и 30 обычных."""
     random = np.random.default_rng(0)
     frame = pd.DataFrame(random.random((40, len(FEATURE_COLUMNS))) * 0.1, columns=FEATURE_COLUMNS)
-    frame.loc[:9, "unique_senders"] = 50.0
-    frame.loc[:9, "transit_ratio"] = 1.0
+    # Группы различаются по всем признакам: после стандартизации шум не должен их смешивать.
+    frame.loc[:9, FEATURE_COLUMNS] += 5.0
     frame["account_id"] = [f"d{i}" if i < 10 else f"c{i}" for i in range(40)]
     frame["label"] = [DROP] * 10 + [CLEAN] * 29 + [OTHER_LABELED]
     return frame
