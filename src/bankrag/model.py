@@ -5,9 +5,11 @@ LightGBM на macOS падает в одном процессе с sentence-tran
 а интерфейс читает готовые оценки и причины из scores.parquet.
 
     PYTHONPATH=src python -m bankrag.model
+    PYTHONPATH=src python -m bankrag.model --kz
 """
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 from typing import Any
@@ -103,8 +105,24 @@ def score_table(model: Any, features: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
+def score_scenarios(config: dict, processed: Path) -> None:
+    """Оценивает казахстанские сценарии уже обученной моделью, без дообучения."""
+    import lightgbm as lgb
+
+    model = lgb.Booster(model_file=str(ROOT / "models" / "model.txt"))
+    features = pd.read_parquet(processed / "kz_features.parquet")
+    score_table(model, features).to_parquet(processed / "kz_scores.parquet", index=False)
+    print(f"оценено счетов: {len(features)}")
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--kz", action="store_true", help="оценить казахстанские сценарии, не обучая модель")
+    args = parser.parse_args()
     config = load_config()
+    if args.kz:
+        score_scenarios(config, ROOT / config["paths"]["processed_dir"])
+        return
     processed: Path = ROOT / config["paths"]["processed_dir"]
     settings = config["model"]
     features = pd.read_parquet(processed / "features.parquet")
