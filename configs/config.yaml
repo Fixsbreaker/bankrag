@@ -45,3 +45,10 @@ model:
     # Дропов в тысячи раз меньше чистых. Полная балансировка (is_unbalance) давала
     # PR-AUC 0,02, вес 10 работает лучше.
     scale_pos_weight: 10
+
+similarity:
+  k: 10
+  m: 32
+  ef_construction: 200
+  ef_search: 128
+  timing_queries: 1000

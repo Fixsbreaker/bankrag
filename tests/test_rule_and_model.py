@@ -1,6 +1,11 @@
 """Тесты правила и модели на маленьких фикстурах."""
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -8,7 +13,7 @@ import pytest
 from bankrag.baseline_rule import Rule, evaluable, tune_rule
 from bankrag.features import FEATURE_COLUMNS
 from bankrag.labels import CLEAN, DROP, OTHER_LABELED
-from bankrag.model import best_f1_threshold, describe_reason, score_table, top_reasons, train_model
+from bankrag.model import best_f1_threshold, describe_reason, top_reasons
 
 
 def _rule_frame() -> pd.DataFrame:
@@ -62,22 +67,33 @@ def test_best_threshold_separates_classes() -> None:
     assert 0.2 < threshold <= 0.8
 
 
-def _model_frame(seed: int) -> pd.DataFrame:
+# LightGBM падает в одном процессе с FAISS и torch, поэтому модель проверяется в отдельном процессе.
+MODEL_CHECK = """
+import numpy as np, pandas as pd
+from bankrag.features import FEATURE_COLUMNS
+from bankrag.labels import CLEAN, DROP
+from bankrag.model import score_table, train_model
+
+def frame(seed):
     random = np.random.default_rng(seed)
-    frame = pd.DataFrame(random.random((300, len(FEATURE_COLUMNS))), columns=FEATURE_COLUMNS)
-    is_drop = frame["unique_senders"] > 0.8
-    frame["label"] = np.where(is_drop, DROP, CLEAN)
-    frame["account_id"] = [f"a{i}" for i in range(len(frame))]
-    frame["window"] = "w"
-    frame["period"] = "p"
-    return frame
+    data = pd.DataFrame(random.random((300, len(FEATURE_COLUMNS))), columns=FEATURE_COLUMNS)
+    data["label"] = np.where(data["unique_senders"] > 0.8, DROP, CLEAN)
+    data["account_id"] = [f"a{i}" for i in range(len(data))]
+    data["window"] = "w"
+    data["period"] = "p"
+    return data
+
+params = {"objective": "binary", "metric": "average_precision", "verbose": -1, "seed": 1,
+          "min_data_in_leaf": 5, "num_threads": 1}
+model = train_model(frame(1), frame(2), params, num_boost_round=50, early_stopping_rounds=20)
+scores = score_table(model, frame(3))
+assert scores.loc[scores["label"] == DROP, "risk_score"].mean() > scores.loc[scores["label"] == CLEAN, "risk_score"].mean()
+top = scores.sort_values("risk_score", ascending=False).iloc[0]
+assert any("отправителей" in reason for reason in top["reasons"])
+"""
 
 
 def test_model_learns_and_explains_a_clear_signal() -> None:
-    params = {"objective": "binary", "metric": "average_precision", "verbose": -1, "seed": 1,
-              "min_data_in_leaf": 5, "num_threads": 1}
-    model = train_model(_model_frame(1), _model_frame(2), params, num_boost_round=50, early_stopping_rounds=20)
-    scores = score_table(model, _model_frame(3))
-    assert scores.loc[scores["label"] == DROP, "risk_score"].mean() > scores.loc[scores["label"] == CLEAN, "risk_score"].mean()
-    top = scores.sort_values("risk_score", ascending=False).iloc[0]
-    assert any("отправителей" in reason for reason in top["reasons"])
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
+    done = subprocess.run([sys.executable, "-c", MODEL_CHECK], capture_output=True, text=True, env=env, timeout=120)
+    assert done.returncode == 0, done.stderr
