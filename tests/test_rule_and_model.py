@@ -1,0 +1,83 @@
+"""Тесты правила и модели на маленьких фикстурах."""
+from __future__ import annotations
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from bankrag.baseline_rule import Rule, evaluable, tune_rule
+from bankrag.features import FEATURE_COLUMNS
+from bankrag.labels import CLEAN, DROP, OTHER_LABELED
+from bankrag.model import best_f1_threshold, describe_reason, score_table, top_reasons, train_model
+
+
+def _rule_frame() -> pd.DataFrame:
+    return pd.DataFrame({
+        "unique_senders": [5, 5, 1, 5, 5],
+        "transit_ratio": [0.95, 0.1, 0.95, 50.0, np.nan],
+        "forward_minutes_median": [10.0, 10.0, 10.0, 10.0, np.nan],
+        "label": [DROP, CLEAN, CLEAN, CLEAN, OTHER_LABELED],
+    })
+
+
+def test_rule_needs_all_conditions_and_treats_missing_as_false() -> None:
+    flags = Rule(min_senders=3, min_transit=0.8, max_forward_minutes=60).flags(_rule_frame())
+    assert flags.tolist() == [True, False, False, False, False]
+
+
+def test_evaluable_removes_other_labeled() -> None:
+    assert OTHER_LABELED not in set(evaluable(_rule_frame())["label"])
+
+
+def test_tune_rule_finds_separating_thresholds() -> None:
+    grid = {"min_senders": [1, 3], "min_transit": [0.05, 0.8], "max_forward_minutes": [60]}
+    rule, score = tune_rule(_rule_frame(), grid)
+    assert score == pytest.approx(1.0)
+    assert rule.min_senders == 3 and rule.min_transit == 0.8
+
+
+def test_describe_reason_is_readable() -> None:
+    assert describe_reason("unique_senders", 12) == "разных отправителей: 12"
+    assert describe_reason("transit_ratio", 0.95) == "ушло дальше 95% от полученной суммы"
+    assert describe_reason("transit_ratio", 283.0) == "отправлено в 283 раз больше, чем получено"
+    assert describe_reason("forward_minutes_median", float("nan")) == "после входящих переводов исходящих не было"
+
+
+def test_every_feature_has_a_phrase() -> None:
+    for feature in FEATURE_COLUMNS:
+        assert describe_reason(feature, 1.0)
+
+
+def test_top_reasons_keeps_only_risk_raising_features() -> None:
+    contributions = np.zeros((1, len(FEATURE_COLUMNS)))
+    contributions[0, FEATURE_COLUMNS.index("unique_senders")] = 2.0
+    contributions[0, FEATURE_COLUMNS.index("in_count")] = 1.0
+    contributions[0, FEATURE_COLUMNS.index("night_share")] = -5.0
+    values = np.full((1, len(FEATURE_COLUMNS)), 3.0)
+    assert top_reasons(contributions, values) == [["разных отправителей: 3", "входящих переводов: 3"]]
+
+
+def test_best_threshold_separates_classes() -> None:
+    threshold = best_f1_threshold(np.array([0, 0, 1, 1]), np.array([0.1, 0.2, 0.8, 0.9]))
+    assert 0.2 < threshold <= 0.8
+
+
+def _model_frame(seed: int) -> pd.DataFrame:
+    random = np.random.default_rng(seed)
+    frame = pd.DataFrame(random.random((300, len(FEATURE_COLUMNS))), columns=FEATURE_COLUMNS)
+    is_drop = frame["unique_senders"] > 0.8
+    frame["label"] = np.where(is_drop, DROP, CLEAN)
+    frame["account_id"] = [f"a{i}" for i in range(len(frame))]
+    frame["window"] = "w"
+    frame["period"] = "p"
+    return frame
+
+
+def test_model_learns_and_explains_a_clear_signal() -> None:
+    params = {"objective": "binary", "metric": "average_precision", "verbose": -1, "seed": 1,
+              "min_data_in_leaf": 5, "num_threads": 1}
+    model = train_model(_model_frame(1), _model_frame(2), params, num_boost_round=50, early_stopping_rounds=20)
+    scores = score_table(model, _model_frame(3))
+    assert scores.loc[scores["label"] == DROP, "risk_score"].mean() > scores.loc[scores["label"] == CLEAN, "risk_score"].mean()
+    top = scores.sort_values("risk_score", ascending=False).iloc[0]
+    assert any("отправителей" in reason for reason in top["reasons"])
