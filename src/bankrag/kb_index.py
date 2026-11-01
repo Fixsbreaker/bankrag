@@ -16,12 +16,14 @@ from bankrag.faiss_safe import faiss
 
 MODEL_NAME = "intfloat/multilingual-e5-small"
 TODO_MARK = "TODO:"
+# Сноска об истории изменений статьи остаётся в файле, но в поиск не входит.
+SKIPPED_PREFIXES = ("#", TODO_MARK, "Сноска.")
 
 Embedder = Callable[[list[str], str], np.ndarray]
 
 
 def parse_document(text: str) -> list[dict]:
-    """Режет документ на абзацы. Заглушки TODO и заголовки в фрагменты не попадают."""
+    """Режет документ на абзацы. Заглушки, заголовки и сноски в фрагменты не попадают."""
     if not text.startswith("---\n"):
         raise ValueError("у файла базы знаний нет заголовка с полями title, kind и source")
     _, header, body = text.split("---\n", 2)
@@ -29,7 +31,7 @@ def parse_document(text: str) -> list[dict]:
     fragments = []
     for paragraph in body.split("\n\n"):
         paragraph = paragraph.strip()
-        if not paragraph or paragraph.startswith("#") or paragraph.startswith(TODO_MARK):
+        if not paragraph or paragraph.startswith(SKIPPED_PREFIXES):
             continue
         fragments.append({"text": paragraph, "kind": meta["kind"], "title": meta["title"], "source": meta["source"]})
     return fragments

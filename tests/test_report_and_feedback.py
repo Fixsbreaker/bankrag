@@ -40,10 +40,14 @@ def test_parse_skips_todo_and_keeps_source() -> None:
     assert all(f["source"] == "http://x" and f["kind"] == "norm" for f in fragments)
 
 
-def test_law_placeholder_is_not_invented() -> None:
+def test_law_fragments_keep_part_and_sanction_and_source() -> None:
     fragments = load_fragments(ROOT / "kb")
-    assert not [f for f in fragments if f["kind"] == "norm"]
-    assert "TODO: вставить дословный текст" in (ROOT / "kb" / "law_232_1.md").read_text(encoding="utf-8")
+    norms = [f for f in fragments if f["kind"] == "norm"]
+    assert norms[0]["text"].startswith("Статья 232-1.")
+    assert len([f for f in norms if f["text"][0].isdigit()]) == 7
+    assert all("наказыва" in f["text"] for f in norms if f["text"][0].isdigit())
+    assert not [f for f in norms if f["text"].startswith("Сноска.")]
+    assert all(f["source"] == "https://adilet.zan.kz/rus/docs/K1400000226" for f in norms)
     assert all(f["source"].startswith("https://") for f in fragments)
 
 
