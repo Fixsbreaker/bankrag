@@ -17,7 +17,6 @@ from bankrag.faiss_safe import faiss  # noqa: E402, F401  # должен заг�
 
 import pandas as pd  # noqa: E402
 import streamlit as st  # noqa: E402
-import streamlit.components.v1 as components  # noqa: E402
 
 from bankrag.baseline_rule import Rule, fast_transit_reasons, fast_transit_rule  # noqa: E402
 from bankrag.data_loader import load_config  # noqa: E402
@@ -138,7 +137,7 @@ def render_similar(account_id: str, dataset: str, queue: pd.DataFrame, show_labe
     accounts, grouped = network_accounts(account_id, similar, load_edges(dataset))
     st.caption("Красный — выбранный счёт, оранжевый — похожие по поведению, серый — его прямые контрагенты. "
                "Похожие счета не обязательно связаны переводами. Показаны переводы за 48 часов.")
-    components.html(network_html(account_id, similar, accounts, grouped), height=540)
+    st.iframe(network_html(account_id, similar, accounts, grouped), height=540)
 
 
 def render_report(row: pd.Series, config: dict, rule: Rule) -> None:
