@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, f1_score, precision_score, recall_score
 
-from bankrag.baseline_rule import Rule
+from bankrag.baseline_rule import Rule, fast_transit_rule
 from bankrag.data_loader import ROOT, load_config
 from bankrag.labels import CLEAN, DROP, OTHER_LABELED
 from bankrag.similarity import SimilarityIndex, VectorScaler, build_hnsw, measure, precision_at_k
@@ -122,7 +122,7 @@ def evaluate_typologies(window: str, features: pd.DataFrame, patterns: pd.DataFr
 
 
 def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, patterns: pd.DataFrame,
-                    rule: Rule, threshold: float, scaler: VectorScaler, config: dict) -> dict:
+                    rule: Rule, fast_rule: Rule, threshold: float, scaler: VectorScaler, config: dict) -> dict:
     """Считает все метрики одного окна."""
     frame = features[features["window"] == window].merge(
         scores[scores["window"] == window][["account_id", "risk_score"]], on="account_id", validate="one_to_one")
@@ -130,6 +130,7 @@ def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, p
     truth = (counted["label"] == DROP).to_numpy()
     model_scores = counted["risk_score"].to_numpy()
     rule_flags = rule.flags(counted).to_numpy()
+    fast_flags = fast_rule.flags(counted).to_numpy()
     settings = config["similarity"]
     k = settings["k"]
 
@@ -139,6 +140,8 @@ def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, p
         "prevalence": float(truth.mean()),
         "rule": classification_metrics(truth, rule_flags),
         "model": classification_metrics(truth, model_scores >= threshold),
+        "fast_transit": classification_metrics(truth, fast_flags),
+        "model_or_fast_transit": classification_metrics(truth, (model_scores >= threshold) | fast_flags),
         "model_pr_auc": float(average_precision_score(truth, model_scores)),
         "model_pr_auc_ci95": bootstrap_pr_auc(truth, model_scores, config["evaluate"]["bootstrap_rounds"], config["seed"]),
         "extra_drops": extra_drops_at_same_alerts(truth, model_scores, rule_flags),
@@ -166,7 +169,8 @@ def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, p
     return result
 
 
-def evaluate_scenarios(processed: Path, rule: Rule, threshold: float, scaler: VectorScaler, config: dict) -> dict | None:
+def evaluate_scenarios(processed: Path, rule: Rule, fast_rule: Rule, threshold: float, scaler: VectorScaler,
+                       config: dict) -> dict | None:
     """Метрики на казахстанских сценариях: модель на них не обучалась, пороги те же."""
     if not (processed / "kz_scores.parquet").exists():
         return None
@@ -193,10 +197,13 @@ def evaluate_scenarios(processed: Path, rule: Rule, threshold: float, scaler: Ve
     index = build_hnsw(vectors, metric, settings["m"], settings["ef_construction"], settings["ef_search"])
     similar = SimilarityIndex(index, frame["account_id"].tolist(), vectors, metric)
     return {
+        "seed": config["kz_scenarios"]["seed"],
         "networks": int(accounts["network_id"].nunique()), "drops": int(is_drop.sum()),
         "accounts_generated": len(accounts), "background_accounts": int(background.sum()),
         "model": detection(frame["risk_score"] >= threshold),
         "rule": detection(rule.flags(frame)),
+        "fast_transit": detection(fast_rule.flags(frame)),
+        "model_or_fast_transit": detection((frame["risk_score"] >= threshold) | fast_rule.flags(frame)),
         "model_max_drop_score": float(frame.loc[is_drop, "risk_score"].max()),
         "model_best_drop_rank": best_rank,
         "similarity": precision_at_k(similar, frame.set_index("account_id")["label"], k),
@@ -228,7 +235,8 @@ def render_markdown(metrics: dict) -> str:
               "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     for window, title in WINDOWS.items():
         data = metrics["windows"][window]
-        for name, key in (("Правило", "rule"), ("LightGBM", "model")):
+        for name, key in (("Правило", "rule"), ("LightGBM", "model"), ("Быстрый транзит", "fast_transit"),
+                          ("LightGBM или быстрый транзит", "model_or_fast_transit")):
             row = data[key]
             auc = "—"
             if key == "model":
@@ -286,14 +294,23 @@ def render_markdown(metrics: dict) -> str:
     else:
         lines += ["Сети сгенерированы командой: параметры заданы в конфигурации и не откалиброваны на реальных данных. "
                   "Модель на них не обучалась, пороги те же, что на тесте IBM.", "",
-                  f"Сетей {kz['networks']}, дропов {kz['drops']}, счетов фона {thousands(kz['background_accounts'])}.", "",
+                  f"Сетей {kz['networks']}, дропов {kz['drops']}, счетов фона {thousands(kz['background_accounts'])}, "
+                  f"seed {kz['seed']}. Пороги правила быстрого транзита выбирались на других сетях, того же генератора. "
+                  "Правило ищет то, что заложено в генератор, поэтому цифры показывают, что система "
+                  "умеет ловить такую схему, а не то, что она сработает в реальном банке.", "",
                   "| Метод | Найдено дропов | Найдено сетей | Тревог на счетах фона |", "| --- | --- | --- | --- |"]
-        for name, key in (("LightGBM", "model"), ("Правило", "rule")):
+        for name, key in (("LightGBM", "model"), ("Правило", "rule"), ("Быстрый транзит", "fast_transit"),
+                          ("LightGBM или быстрый транзит", "model_or_fast_transit")):
             row = kz[key]
             lines.append(f"| {name} | {row['drops_found']} из {kz['drops']} | {row['networks_found']} из {kz['networks']} | {row['background_alerts']} |")
         score = f"{kz['model_max_drop_score']:.3f}".replace(".", ",")
         lines += ["", f"Наибольшая оценка дропа {score}, лучшее место дропа в очереди {kz['model_best_drop_rank']}. "
                   f"Precision@{k} «Найти похожие» от дропов сценариев: {percent(kz['similarity'][f'precision_at_{k}'])}.", ""]
+        spread = kz.get("seed_spread")
+        if spread:
+            lines += [f"Одна генерация даёт шумную цифру. На {len(spread['seeds'])} других seed правило быстрого транзита "
+                      f"находит от {percent(spread['share_min'])} до {percent(spread['share_max'])} дропов, "
+                      f"медиана {percent(spread['share_median'])}. Модель на этих сетях не оценивалась.", ""]
     return "\n".join(lines)
 
 
@@ -310,12 +327,17 @@ def main() -> None:
     config["evaluate"]["similarity_metric"] = json.loads(
         (reports / "similarity.json").read_text(encoding="utf-8"))["chosen_metric"]
 
-    metrics = {"k": config["similarity"]["k"], "rule": rule.__dict__, "model_threshold": threshold, "windows": {}}
+    fast_rule = fast_transit_rule(config)
+    metrics = {"k": config["similarity"]["k"], "rule": rule.__dict__, "fast_transit_rule": fast_rule.__dict__,
+               "model_threshold": threshold, "windows": {}}
     for window in WINDOWS:
-        metrics["windows"][window] = evaluate_window(window, features, scores, patterns, rule, threshold, scaler, config)
+        metrics["windows"][window] = evaluate_window(window, features, scores, patterns, rule, fast_rule, threshold, scaler, config)
 
     metrics["typology"] = evaluate_typologies(MAIN_WINDOW, features, patterns, config)
-    metrics["scenarios"] = evaluate_scenarios(processed, rule, threshold, scaler, config)
+    metrics["scenarios"] = evaluate_scenarios(processed, rule, fast_rule, threshold, scaler, config)
+    spread_path = reports / "kz_seeds.json"
+    if metrics["scenarios"] and spread_path.exists():
+        metrics["scenarios"]["seed_spread"] = json.loads(spread_path.read_text(encoding="utf-8"))
 
     (reports / "metrics.json").write_text(json.dumps(metrics, ensure_ascii=False, indent=2), encoding="utf-8")
     (reports / "metrics.md").write_text(render_markdown(metrics), encoding="utf-8")
