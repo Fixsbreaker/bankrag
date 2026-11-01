@@ -1,0 +1,30 @@
+{
+  "train_drops": 513,
+  "train_clean": 2308286,
+  "best_iteration": 1110,
+  "threshold": 0.3943203157181076,
+  "val_pr_auc": 0.6722105438589241,
+  "val_prevalence": 0.0005643485621937768,
+  "val_f1": 0.648854961832061,
+  "val_alerts": 130,
+  "val_drops_found": 85,
+  "val_drops": 132,
+  "feature_gain_share": {
+    "currency_count": 0.3663687780926306,
+    "transit_ratio": 0.19922372017524959,
+    "self_transfer_count": 0.08058017017340169,
+    "known_drop_neighbors": 0.08049080274878667,
+    "unique_senders": 0.038036670918780345,
+    "amount_log_mean": 0.035366704936128965,
+    "forward_minutes_min": 0.033642202092067613,
+    "amount_log_std": 0.0274926597057185,
+    "format_count": 0.02320048675462653,
+    "neighbor_degree_mean": 0.02022990488583645,
+    "out_count": 0.019719459026015334,
+    "in_count": 0.01944857820765407,
+    "forward_minutes_median": 0.017634327103192928,
+    "unique_receivers": 0.01404103166420414,
+    "neighbor_degree_max": 0.012576691974952972,
+    "night_share": 0.011947811540753663
+  }
+}

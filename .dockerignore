@@ -1,0 +1,10 @@
+.git
+.venv
+.claude
+data
+models
+index
+reports
+tests
+__pycache__
+*.docx

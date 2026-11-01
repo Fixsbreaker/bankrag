@@ -1,0 +1,13 @@
+services:
+  bankrag:
+    build: .
+    ports:
+      # Только с этой машины: демо не должно быть видно в локальной сети.
+      - "127.0.0.1:8501:8501"
+    volumes:
+      # Артефакты готовятся на машине: make build && make eval.
+      - ./data/processed:/app/data/processed:ro
+      - ./models:/app/models:ro
+      - ./reports:/app/reports:ro
+      # Решения аналитика сохраняются здесь.
+      - ./data/feedback:/app/data/feedback

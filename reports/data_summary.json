@@ -1,0 +1,99 @@
+{
+  "transactions": 5078345,
+  "accounts_in_transactions": 515088,
+  "accounts_in_listing": 518581,
+  "laundering_transactions": 5177,
+  "laundering_share": 0.0010194266045335635,
+  "accounts_with_laundering": 6357,
+  "self_transfers": 591212,
+  "first_timestamp": "2022-09-01 00:00:00",
+  "last_timestamp": "2022-09-18 16:18:00",
+  "pattern_attempts": 370,
+  "pattern_transactions": 3209,
+  "attempts_by_type": {
+    "BIPARTITE": 49,
+    "CYCLE": 54,
+    "FAN-IN": 40,
+    "FAN-OUT": 48,
+    "GATHER-SCATTER": 51,
+    "RANDOM": 41,
+    "SCATTER-GATHER": 44,
+    "STACK": 43
+  },
+  "laundering_transactions_found_in_patterns": 3209,
+  "per_day": {
+    "2022-09-01": {
+      "transactions": 1114921,
+      "laundering": 322
+    },
+    "2022-09-02": {
+      "transactions": 754449,
+      "laundering": 408
+    },
+    "2022-09-03": {
+      "transactions": 207382,
+      "laundering": 391
+    },
+    "2022-09-04": {
+      "transactions": 207430,
+      "laundering": 407
+    },
+    "2022-09-05": {
+      "transactions": 482650,
+      "laundering": 471
+    },
+    "2022-09-06": {
+      "transactions": 482089,
+      "laundering": 531
+    },
+    "2022-09-07": {
+      "transactions": 482751,
+      "laundering": 497
+    },
+    "2022-09-08": {
+      "transactions": 482773,
+      "laundering": 539
+    },
+    "2022-09-09": {
+      "transactions": 654467,
+      "laundering": 514
+    },
+    "2022-09-10": {
+      "transactions": 208325,
+      "laundering": 442
+    },
+    "2022-09-11": {
+      "transactions": 396,
+      "laundering": 232
+    },
+    "2022-09-12": {
+      "transactions": 281,
+      "laundering": 170
+    },
+    "2022-09-13": {
+      "transactions": 184,
+      "laundering": 106
+    },
+    "2022-09-14": {
+      "transactions": 121,
+      "laundering": 70
+    },
+    "2022-09-15": {
+      "transactions": 46,
+      "laundering": 28
+    },
+    "2022-09-16": {
+      "transactions": 46,
+      "laundering": 26
+    },
+    "2022-09-17": {
+      "transactions": 23,
+      "laundering": 15
+    },
+    "2022-09-18": {
+      "transactions": 11,
+      "laundering": 8
+    }
+  },
+  "sample_days": null
+}

@@ -1,7 +1,16 @@
 .venv/
 __pycache__/
 *.pyc
-.env
-index/
+.pytest_cache/
 .DS_Store
-data/raw/official/
+.env
+kaggle.json
+
+# Данные, модели и артефакты не хранятся в git
+data/raw/
+data/processed/
+models/
+index/
+*.parquet
+*.sqlite
+data/feedback/

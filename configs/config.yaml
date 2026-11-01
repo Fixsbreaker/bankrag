@@ -1,0 +1,89 @@
+# Пути, пороги, размеры выборок и seed проекта.
+seed: 42
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  reports_dir: reports
+
+dataset:
+  prefix: HI-Small
+
+split:
+  # Доли считаются по числу транзакций, порядок по времени сохраняется.
+  fractions: [0.6, 0.2, 0.2]
+  # С этого момента обычных переводов почти нет; тест считается с хвостом и без него.
+  tail_start: "2022-09-11"
+
+features:
+  window_hours: 48
+  # Окна обучения перекрываются, валидация и тест используют по одному окну.
+  train_step_hours: 12
+  # Ночь: от первого часа включительно до второго не включая.
+  night_hours: [0, 6]
+
+rule:
+  # Второй сигнал очереди. Значения заданы вручную: на валидации и тесте IBM они не подбирались.
+  fast_transit:
+    min_senders: 3
+    min_transit: 0.8
+    max_transit: 1.2
+    max_forward_minutes: 60
+  grid:
+    min_senders: [1, 2, 3, 4, 5, 8, 12]
+    min_transit: [0.3, 0.5, 0.7, 0.8, 0.9, 0.95]
+    max_forward_minutes: [15, 60, 240, 720, 1440, 2880]
+
+model:
+  num_boost_round: 1500
+  early_stopping_rounds: 150
+  # Настройки выбраны по PR-AUC на валидации; тест при выборе не использовался.
+  params:
+    objective: binary
+    metric: average_precision
+    learning_rate: 0.02
+    num_leaves: 7
+    min_data_in_leaf: 20
+    lambda_l2: 5
+    feature_fraction: 0.8
+    bagging_fraction: 0.8
+    bagging_freq: 1
+    # Дропов в тысячи раз меньше чистых. Полная балансировка (is_unbalance) давала
+    # PR-AUC 0,02, вес 10 работает лучше.
+    scale_pos_weight: 10
+
+similarity:
+  k: 10
+  m: 32
+  ef_construction: 200
+  ef_search: 128
+  timing_queries: 1000
+
+evaluate:
+  bootstrap_rounds: 200
+  queue_sizes: [100, 500]
+
+app:
+  queue_rows: 500
+
+report:
+  top_k: 3
+  # Посторонние запросы дают близость до 0,76, запросы по признакам счёта от 0,83.
+  # Порог выбран по нескольким проверочным запросам, это не строгая калибровка.
+  min_similarity: 0.8
+
+# Сценарии заданы командой и не откалиброваны на реальных данных.
+kz_scenarios:
+  # Пороги правила быстрого транзита выбирались на сетях с seed 42,
+  # поэтому в отчёт идут новые сети с другим seed.
+  seed: 2026
+  networks: 30
+  senders: [8, 30]
+  depth: [1, 3]
+  max_layer_width: 3
+  inflow_hours: 12
+  forward_minutes: [5, 45]
+  forward_share: [0.90, 0.98]
+  amount_tenge: [20000, 500000]
+  # Тенге в наборе IBM нет. Это допущение для перевода сумм в доллары, а не курс на дату.
+  tenge_per_usd: 500
