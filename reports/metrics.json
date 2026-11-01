@@ -55,13 +55,13 @@
       ],
       "similarity": {
         "metric": "cosine",
-        "build_seconds": 5.032110875006765,
+        "build_seconds": 5.265519083943218,
         "starts": 97,
         "precision_at_10": 0.10721649484536085,
         "any_labeled_at_10": 0.19072164948453607,
         "prevalence": 0.00027366573846019293,
-        "query_ms_mean": 0.09340777969919145,
-        "query_ms_p95": 0.12470762012526389,
+        "query_ms_mean": 0.091709726722911,
+        "query_ms_p95": 0.12238759081810711,
         "recall_vs_exact": 0.9290999999999999,
         "queries": 1000,
         "by_pattern": {
@@ -83,7 +83,7 @@
           },
           "GATHER-SCATTER": {
             "starts": 23,
-            "precision_at_10": 0.05217391304347826
+            "precision_at_10": 0.05217391304347827
           },
           "RANDOM": {
             "starts": 35,
@@ -95,7 +95,7 @@
           },
           "STACK": {
             "starts": 27,
-            "precision_at_10": 0.07777777777777777
+            "precision_at_10": 0.07777777777777778
           }
         },
         "drops_without_pattern": 1
@@ -149,13 +149,13 @@
       ],
       "similarity": {
         "metric": "cosine",
-        "build_seconds": 5.174189042067155,
+        "build_seconds": 5.042170166969299,
         "starts": 325,
         "precision_at_10": 0.3467692307692308,
         "any_labeled_at_10": 0.4723076923076923,
         "prevalence": 0.0009119069798763173,
-        "query_ms_mean": 0.09350911527872086,
-        "query_ms_p95": 0.1300482195802033,
+        "query_ms_mean": 0.09383379062637687,
+        "query_ms_p95": 0.12825424782931805,
         "recall_vs_exact": 0.929,
         "queries": 1000,
         "by_pattern": {
@@ -165,11 +165,11 @@
           },
           "CYCLE": {
             "starts": 106,
-            "precision_at_10": 0.2009433962264151
+            "precision_at_10": 0.20094339622641508
           },
           "FAN-IN": {
             "starts": 30,
-            "precision_at_10": 0.10333333333333333
+            "precision_at_10": 0.10333333333333332
           },
           "FAN-OUT": {
             "starts": 28,
@@ -177,19 +177,19 @@
           },
           "GATHER-SCATTER": {
             "starts": 48,
-            "precision_at_10": 0.27708333333333335
+            "precision_at_10": 0.2770833333333333
           },
           "RANDOM": {
             "starts": 85,
-            "precision_at_10": 0.3505882352941177
+            "precision_at_10": 0.35058823529411764
           },
           "SCATTER-GATHER": {
             "starts": 106,
-            "precision_at_10": 0.3754716981132075
+            "precision_at_10": 0.3754716981132076
           },
           "STACK": {
             "starts": 56,
-            "precision_at_10": 0.3196428571428572
+            "precision_at_10": 0.3196428571428571
           }
         },
         "drops_without_pattern": 1
