@@ -1,0 +1,73 @@
+{
+  "window_hours": 48,
+  "sample": null,
+  "usd_rates": {
+    "Australian Dollar": 1.4127999999032184,
+    "Bitcoin": 8.421052631578948e-05,
+    "Brazil Real": 5.646500009004446,
+    "Canadian Dollar": 1.3193000001007262,
+    "Euro": 0.8533999998726847,
+    "Mexican Peso": 21.14310007608757,
+    "Ruble": 77.80400000193573,
+    "Rupee": 73.44400000568325,
+    "Saudi Riyal": 3.7510999920491686,
+    "Shekel": 3.3770000161832554,
+    "Swiss Franc": 0.915000001652184,
+    "UK Pound": 0.7742000026743013,
+    "Yen": 105.4000000149797,
+    "Yuan": 6.697600001955412,
+    "US Dollar": 1.0
+  },
+  "windows": {
+    "train_1": {
+      "start": "2022-09-04 13:36:00",
+      "end": "2022-09-06 13:36:00",
+      "transactions": 846674,
+      "accounts": 235329,
+      "known_drops": 121,
+      "drop": 88,
+      "other_labeled": 1281,
+      "clean": 233960
+    },
+    "train_2": {
+      "start": "2022-09-02 13:36:00",
+      "end": "2022-09-04 13:36:00",
+      "transactions": 650881,
+      "accounts": 266089,
+      "known_drops": 30,
+      "drop": 68,
+      "other_labeled": 1179,
+      "clean": 264842
+    },
+    "val": {
+      "start": "2022-09-06 16:12:00",
+      "end": "2022-09-08 16:12:00",
+      "transactions": 965015,
+      "accounts": 235225,
+      "known_drops": 305,
+      "drop": 132,
+      "other_labeled": 1327,
+      "clean": 233766
+    },
+    "test": {
+      "start": "2022-09-09 00:00:00",
+      "end": "2022-09-11 00:00:00",
+      "transactions": 862792,
+      "accounts": 354447,
+      "known_drops": 305,
+      "drop": 97,
+      "other_labeled": 1300,
+      "clean": 353050
+    },
+    "test_with_tail": {
+      "start": "2022-09-08 16:12:00",
+      "end": "2022-09-18 16:19:00",
+      "transactions": 1015882,
+      "accounts": 356396,
+      "known_drops": 305,
+      "drop": 325,
+      "other_labeled": 1876,
+      "clean": 354195
+    }
+  }
+}
