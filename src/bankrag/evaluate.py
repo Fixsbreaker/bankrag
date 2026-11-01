@@ -116,9 +116,10 @@ def evaluate_typologies(window: str, features: pd.DataFrame, patterns: pd.DataFr
         for account in accounts:
             account_types.setdefault(account, set()).add(name)
     kb = KnowledgeBase.load(ROOT / "models", e5_embedder())
+    ordered = sorted(account_types)
     found = [[typology_name(f["text"]) for f in kb.search(reasons_to_query(list(reasons[a])), 3, "typology")]
-             for a in account_types]
-    return typology_match(found, list(account_types.values()), sorted(by_type), 20000, config["seed"])
+             for a in ordered]
+    return typology_match(found, [account_types[a] for a in ordered], sorted(by_type), 20000, config["seed"])
 
 
 def evaluate_window(window: str, features: pd.DataFrame, scores: pd.DataFrame, patterns: pd.DataFrame,

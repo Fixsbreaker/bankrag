@@ -2,7 +2,8 @@
   "rule": {
     "min_senders": 1,
     "min_transit": 0.95,
-    "max_forward_minutes": 2880.0
+    "max_forward_minutes": 2880.0,
+    "max_transit": null
   },
   "val_f1": 0.03758654797230465,
   "val_alerts": 879,
