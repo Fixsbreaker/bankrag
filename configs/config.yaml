@@ -23,6 +23,12 @@ features:
   night_hours: [0, 6]
 
 rule:
+  # Второй сигнал очереди. Значения заданы вручную: на валидации и тесте IBM они не подбирались.
+  fast_transit:
+    min_senders: 3
+    min_transit: 0.8
+    max_transit: 1.2
+    max_forward_minutes: 60
   grid:
     min_senders: [1, 2, 3, 4, 5, 8, 12]
     min_transit: [0.3, 0.5, 0.7, 0.8, 0.9, 0.95]
@@ -68,6 +74,9 @@ report:
 
 # Сценарии заданы командой и не откалиброваны на реальных данных.
 kz_scenarios:
+  # Пороги правила быстрого транзита выбирались на сетях с seed 42,
+  # поэтому в отчёт идут новые сети с другим seed.
+  seed: 2026
   networks: 30
   senders: [8, 30]
   depth: [1, 3]

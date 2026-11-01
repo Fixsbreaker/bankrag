@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from bankrag.baseline_rule import Rule, evaluable, tune_rule
+from bankrag.baseline_rule import Rule, evaluable, fast_transit_reasons, fast_transit_rule, tune_rule
 from bankrag.features import FEATURE_COLUMNS
 from bankrag.labels import CLEAN, DROP, OTHER_LABELED
 from bankrag.model import best_f1_threshold, describe_reason, top_reasons
@@ -28,6 +28,22 @@ def _rule_frame() -> pd.DataFrame:
 def test_rule_needs_all_conditions_and_treats_missing_as_false() -> None:
     flags = Rule(min_senders=3, min_transit=0.8, max_forward_minutes=60).flags(_rule_frame())
     assert flags.tolist() == [True, False, False, False, False]
+
+
+def test_fast_transit_rule_uses_its_own_upper_bound() -> None:
+    rule = fast_transit_rule({"rule": {"fast_transit": {"min_senders": 3, "min_transit": 0.8, "max_transit": 1.2,
+                                                        "max_forward_minutes": 60}}})
+    frame = pd.DataFrame({"unique_senders": [3, 3, 3, 2], "transit_ratio": [1.2, 1.21, 0.8, 1.0],
+                          "forward_minutes_median": [60.0, 10.0, 61.0, 10.0]})
+    assert rule.flags(frame).tolist() == [True, False, False, False]
+
+
+def test_fast_transit_reasons_show_values_and_thresholds() -> None:
+    rule = Rule(min_senders=3, min_transit=0.8, max_forward_minutes=60, max_transit=1.2)
+    reasons = fast_transit_reasons(rule, 12, 0.95, 15)
+    assert reasons == ["разных отправителей: 12 (порог 3)",
+                       "ушло дальше 95% от полученной суммы (порог 80–120%)",
+                       "деньги уходят дальше через 15 мин. (порог 60 мин.)"]
 
 
 def test_evaluable_removes_other_labeled() -> None:

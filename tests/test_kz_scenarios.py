@@ -11,6 +11,7 @@ from bankrag.kz_scenarios import (
     ROLE_CASH_OUT,
     ROLE_MULE,
     ROLE_SENDER,
+    build_scenario_edges,
     build_scenario_features,
     generate_scenarios,
 )
@@ -64,7 +65,8 @@ def test_labels_mark_mules_as_drops_and_chain_ends_separately() -> None:
         "timestamp": [START], "from_account": ["BG1"], "to_account": ["BG2"], "amount_received": [5.0],
         "receiving_currency": pd.Categorical([usd]), "amount_paid": [5.0], "payment_currency": pd.Categorical([usd]),
         "payment_format": pd.Categorical(["ACH"]), "is_laundering": [0]})
-    features = build_scenario_features(background, transfers, {usd: 1.0, CURRENCY: 500.0}, set(), (0, 6)).set_index("account_id")
+    edges = build_scenario_edges(background, transfers, {usd: 1.0, CURRENCY: 500.0})
+    features = build_scenario_features(edges, set(), (0, 6)).set_index("account_id")
     labels = features["label"]
     for row in accounts.itertuples(index=False):
         expected = DROP if row.role == ROLE_MULE else OTHER_LABELED

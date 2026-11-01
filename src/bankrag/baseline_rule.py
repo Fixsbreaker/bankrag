@@ -22,15 +22,30 @@ class Rule:
     min_senders: int
     min_transit: float
     max_forward_minutes: float
+    max_transit: float | None = None
 
     def flags(self, features: pd.DataFrame) -> pd.Series:
         """True для счетов, на которых правило срабатывает. Пропуски условие не выполняют."""
+        max_transit = self.max_transit if self.max_transit is not None else 1 / self.min_transit
         return (
             (features["unique_senders"] >= self.min_senders)
             & (features["transit_ratio"] >= self.min_transit)
-            & (features["transit_ratio"] <= 1 / self.min_transit)
+            & (features["transit_ratio"] <= max_transit)
             & (features["forward_minutes_median"] <= self.max_forward_minutes)
         )
+
+
+def fast_transit_rule(config: dict) -> Rule:
+    """Второй сигнал очереди: быстрый транзит. Пороги заданы вручную и на данных не подбираются."""
+    return Rule(**config["rule"]["fast_transit"])
+
+
+def fast_transit_reasons(rule: Rule, unique_senders: float, transit_ratio: float, forward_minutes: float) -> list[str]:
+    """Объяснение срабатывания правила теми числами, по которым оно сработало."""
+    return [f"разных отправителей: {unique_senders:.0f} (порог {rule.min_senders})",
+            f"ушло дальше {transit_ratio * 100:.0f}% от полученной суммы "
+            f"(порог {rule.min_transit * 100:.0f}–{rule.max_transit * 100:.0f}%)",
+            f"деньги уходят дальше через {forward_minutes:.0f} мин. (порог {rule.max_forward_minutes:.0f} мин.)"]
 
 
 def evaluable(features: pd.DataFrame) -> pd.DataFrame:
