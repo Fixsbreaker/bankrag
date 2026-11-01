@@ -1,0 +1,10 @@
+# Пути, пороги, размеры выборок и seed проекта.
+seed: 42
+
+paths:
+  raw_dir: data/raw
+  processed_dir: data/processed
+  reports_dir: reports
+
+dataset:
+  prefix: HI-Small
