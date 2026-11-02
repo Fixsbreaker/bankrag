@@ -29,15 +29,22 @@ SYSTEM_PROMPT = """Ты — BankRAG, помощник аналитика ант�
 Правила:
 1. Все числа, суммы, даты, время и номера счетов бери только из результатов функций. Сам ничего не считай: переписывай готовые строки из полей *_text и summary.
 2. Если для ответа нужны данные, вызови функцию. Не выдумывай счета и суммы.
-3. Тексты законов не цитируй и не пересказывай: код покажет дословный текст под ответом. Скажи только, какой документ найден, и что правовую оценку даёт уполномоченный орган.
+3. На вопрос о законе, статье или схеме всегда вызывай search_knowledge. Тексты законов не цитируй, не пересказывай и не называй номера статей по памяти: код покажет дословный текст под ответом. Назови только найденный документ по его заголовку, не описывай его смысл, и добавь, что правовую оценку даёт уполномоченный орган.
 4. Ты не можешь блокировать или приостанавливать счета, звонить клиентам, записывать решения «подтвердил» или «отклонил». Если просят, вежливо откажи: решение и приостановку делает аналитик в системах банка. Предложи подготовить справку.
 5. Не давай юридических заключений.
 6. Если данных нет, так и скажи. О владельцах счетов (имя, адрес, счета в других банках) данных нет.
 7. Если вопрос не про антифрод и переводы, вежливо откажи.
 8. «Этот счёт», «он», «туда» — последний обсуждаемый счёт: {focus}.
 9. Если просят показать на графе или нарисовать, вызови show_graph.
+10. Не называй функции в ответе и не предлагай их вызвать.
+11. Справку собирай по всем счетам дела: {case}.
 
 Данные: {dataset}. Переводы с {start} по {end}."""
+FORCE_TOOL_HINT = "Сначала вызови подходящую функцию: отвечать можно только по её результату."
+# Вопросы о счёте или законе без вызова функции получили бы выдуманный ответ. Просьбы заблокировать
+# счёт сюда не входят: на них помощник сразу отказывает.
+NEEDS_TOOL = re.compile(r"KZ-?\d{4}|\d+_[0-9A-F]{6,}|стать|закон|норм|УК\b", re.IGNORECASE)
+REFUSAL_REQUEST = re.compile(r"блок|приостан|заморо|арест|звон", re.IGNORECASE)
 
 
 @dataclass
@@ -84,9 +91,24 @@ def run_tool(data: CaseData, name: str, arguments: dict, session: "ChatSession |
         return {"error": text, "summary": text, "accounts": []}
 
 
-def _for_model(result: dict) -> str:
-    """Результат для модели без графа и путей к файлам: они нужны только интерфейсу."""
-    brief = {k: v for k, v in result.items() if k not in ("graph", "path")}
+# Длинные списки модель не получает: их показывает таблица под ответом, а модель пишет только вывод.
+# Так ответ короче и быстрее, а закон модель не может процитировать, потому что не видит текста.
+HIDDEN_FROM_MODEL = {"graph", "path", "steps", "chain", "senders", "accounts_detail", "similar", "fragments", "rows"}
+
+
+def _for_model(name: str, result: dict) -> str:
+    """Короткая версия результата для модели: итоговые числа и готовые строки."""
+    brief = {k: v for k, v in result.items() if k not in HIDDEN_FROM_MODEL}
+    if name == "trace_money" and "summary" in brief:
+        brief["summary"] = brief["summary"].split("\n")[-1]
+        brief["chain_accounts"] = [line["account"] for line in result.get("chain", [])]
+    elif name == "trace_sources":
+        brief["complaint_senders"] = [s["account"] for s in result.get("senders", []) if s["complaint"]]
+    elif name == "list_suspicious":
+        brief["top"] = [{k: r[k] for k in ("account", "flags", "main_reason")} for r in result.get("rows", [])[:5]]
+        brief["summary"] = brief.get("summary", "").split("\n")[0]
+    elif name == "find_similar":
+        brief["top_similar"] = [r["account"] for r in result.get("similar", [])[:5]]
     text = json.dumps(brief, ensure_ascii=False, default=str)
     return text if len(text) <= MAX_TOOL_TEXT else text[:MAX_TOOL_TEXT] + "…"
 
@@ -111,6 +133,7 @@ class ChatSession:
         self.turns: list[Turn] = []
         self.last_graph: dict | None = None
         self.last_accounts: list[str] = []
+        self.case_accounts: list[str] = []
         self.previous = Allowed()
 
     @property
@@ -119,8 +142,9 @@ class ChatSession:
 
     def _system(self) -> dict:
         data = self.data
+        case = ", ".join(self.case_accounts[:15] or self.last_accounts[:12]) or "пока нет"
         return {"role": "system", "content": SYSTEM_PROMPT.format(
-            focus=self.focus, dataset=data.title, start=fmt.when(data.start), end=fmt.when(data.end))}
+            focus=self.focus, case=case, dataset=data.title, start=fmt.when(data.start), end=fmt.when(data.end))}
 
     def _remember(self, turn: Turn) -> Turn:
         for call in turn.calls:
@@ -138,6 +162,12 @@ class ChatSession:
                 # В фокусе первый счёт ответа, кроме пострадавшего в начале цепочки.
                 focus = result.get("account") or accounts[0]
                 self.last_accounts = [focus, *[a for a in accounts if a != focus]]
+            # Счета дела: цепочка денег и пострадавшие с жалобами. По ним собирается справка.
+            if call["name"] == "trace_money" and not result.get("error"):
+                self.case_accounts = list(dict.fromkeys([*self.case_accounts, *accounts]))
+            if call["name"] == "trace_sources" and not result.get("error"):
+                victims = [s["account"] for s in result.get("senders", []) if s["complaint"]]
+                self.case_accounts = list(dict.fromkeys([*self.case_accounts, *victims]))
         self.previous = Allowed()
         for call in turn.calls:
             self.previous.add(call["result"])
@@ -167,6 +197,11 @@ class ChatSession:
         messages = [self._system(), *self.history, {"role": "user", "content": question}]
         calls: list[dict] = []
         reply = self.model.chat(messages, TOOL_SPECS)
+        if not reply.tool_calls and NEEDS_TOOL.search(question) and not REFUSAL_REQUEST.search(question):
+            # Вопрос о конкретном счёте без вызова функции — ответ был бы выдуман.
+            messages += [{"role": "assistant", "content": reply.content or ""},
+                         {"role": "user", "content": FORCE_TOOL_HINT}]
+            reply = self.model.chat(messages, TOOL_SPECS)
         while reply.tool_calls and len(calls) < limit:
             messages.append({"role": "assistant", "content": reply.content or "",
                              "tool_calls": [{"function": {"name": c["name"], "arguments": c["arguments"]}}
@@ -176,7 +211,7 @@ class ChatSession:
                     break
                 result = run_tool(self.data, call["name"], call["arguments"], self)
                 calls.append({"name": call["name"], "arguments": call["arguments"], "result": result})
-                messages.append({"role": "tool", "tool_name": call["name"], "content": _for_model(result)})
+                messages.append({"role": "tool", "tool_name": call["name"], "content": _for_model(call["name"], result)})
             # После лимита вызовов модель только пишет ответ.
             reply = self.model.chat(messages, TOOL_SPECS if len(calls) < limit else None)
         answer = THINK_TAG.sub("", reply.content or "").strip()

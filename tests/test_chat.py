@@ -21,7 +21,7 @@ class StubModel:
         self.requests: list[list[dict]] = []
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> LLMReply:
-        self.requests.append(messages)
+        self.requests.append(list(messages))
         return self.replies.pop(0)
 
 
@@ -107,3 +107,11 @@ def test_buttons_mode_and_bad_arguments(data: CaseData) -> None:
     assert "Не удалось" in run_tool(data, "trace_money", {"wrong": 1})["summary"]
     assert "нет" in run_tool(data, "block_account", {})["summary"]
 
+
+
+def test_question_about_account_forces_tool_call(data: CaseData) -> None:
+    model = StubModel([LLMReply("Счёт подозрителен, риск высокий."), _call("account_profile", account="KZ-1002"),
+                       LLMReply("У KZ-1002 есть флажок дробления.")])
+    turn = ChatSession(data, model, load_config()).ask("Почему KZ-1002 подозрителен?")
+    assert [c["name"] for c in turn.calls] == ["account_profile"]
+    assert model.requests[1][-1]["content"].startswith("Сначала вызови")

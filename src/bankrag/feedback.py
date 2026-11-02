@@ -5,6 +5,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pandas as pd
+
 CONFIRMED = "confirmed"
 REJECTED = "rejected"
 
@@ -18,17 +20,32 @@ def _connect(path: Path) -> sqlite3.Connection:
         decision TEXT NOT NULL,
         risk_score REAL,
         created_at TEXT NOT NULL)""")
+    # Базы старой версии без имени аналитика и набора данных дополняются столбцами.
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(decisions)")}
+    for column in ("analyst", "dataset"):
+        if column not in columns:
+            connection.execute(f"ALTER TABLE decisions ADD COLUMN {column} TEXT")
     return connection
 
 
-def save_decision(path: Path, account_id: str, decision: str, risk_score: float | None = None) -> None:
+def save_decision(path: Path, account_id: str, decision: str, risk_score: float | None = None,
+                  analyst: str = "", dataset: str = "") -> None:
     """Добавляет решение. История не перезаписывается: действующим считается последнее."""
     if decision not in (CONFIRMED, REJECTED):
         raise ValueError(f"неизвестное решение {decision!r}")
     with _connect(path) as connection:
-        connection.execute("INSERT INTO decisions (account_id, decision, risk_score, created_at) VALUES (?, ?, ?, ?)",
-                           (account_id, decision, risk_score, datetime.now(timezone.utc).isoformat()))
+        connection.execute("INSERT INTO decisions (account_id, decision, risk_score, created_at, analyst, dataset)"
+                           " VALUES (?, ?, ?, ?, ?, ?)",
+                           (account_id, decision, risk_score, datetime.now(timezone.utc).isoformat(), analyst, dataset))
     connection.close()
+
+
+def read_decisions(path: Path, limit: int = 500) -> pd.DataFrame:
+    """История решений для журнала, новые сверху."""
+    with _connect(path) as connection:
+        frame = pd.read_sql_query("SELECT * FROM decisions ORDER BY id DESC LIMIT ?", connection, params=(limit,))
+    connection.close()
+    return frame
 
 
 def latest_decision(path: Path, account_id: str) -> str | None:
