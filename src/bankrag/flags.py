@@ -24,7 +24,9 @@ FLAG_TITLES = {
 }
 
 RED, ORANGE, GREY, GREEN, BLUE = "red", "orange", "grey", "green", "blue"
-COLOR_HEX = {RED: "#d62728", ORANGE: "#ff7f0e", GREY: "#9e9e9e", GREEN: "#2ca02c", BLUE: "#1f77b4"}
+# Цвета различаются не только оттенком, но и светлотой: на графе и в чёрно-белой распечатке
+# справки уровни видно и без цвета. Рядом с цветом всегда идёт подпись из COLOR_TITLES.
+COLOR_HEX = {RED: "#b3261e", ORANGE: "#c77700", GREY: "#9a9ea6", GREEN: "#3e8e7e", BLUE: "#1f5fa8"}
 COLOR_TITLES = {RED: "подозрительно", ORANGE: "стоит проверить", GREY: "нейтрально, данных мало",
                 GREEN: "чисто", BLUE: "пострадавший (есть жалоба)"}
 

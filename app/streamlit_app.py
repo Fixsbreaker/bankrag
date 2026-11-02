@@ -43,6 +43,12 @@ SIMILARITY_INDEX = {KZ: "similarity_kz", IBM: "similarity_test"}
 DOTS = {"red": "🔴", "orange": "🟠", "grey": "⚪", "green": "🟢", "blue": "🔵"}
 DECISION_TITLES = {CONFIRMED: "подтвердил", REJECTED: "отклонил"}
 MAX_DECISION_ACCOUNTS = 8
+MAX_SUGGESTIONS = 6
+# Стартовые подсказки для набора IBM: конкретных номеров счетов тут не назвать, они длинные и случайные.
+GENERIC_STARTERS = ["Покажи 10 самых подозрительных счетов", "Кого проверить в первую очередь?",
+                    "Что такое схема сбора (fan-in)?"]
+GUARDRAIL = ("Помощник только показывает данные. Блокировку счёта, звонок клиенту и решение "
+             "«подтвердил / отклонил» делает аналитик: у модели таких функций нет.")
 
 
 @st.cache_resource(show_spinner="Загружаю базу знаний и модель эмбеддингов…")
@@ -92,6 +98,21 @@ def render_legend() -> None:
                 "▭ снятие наличных · толстая рамка — подтверждён аналитиком</span></div>", unsafe_allow_html=True)
 
 
+def render_numbers(pairs: list[tuple[str, str]]) -> None:
+    """Главные числа результата функции: подпись и готовая строка из полей *_text."""
+    for column, (title, value) in zip(st.columns(len(pairs)), pairs):
+        column.metric(title, value)
+
+
+def render_sources(turn: Turn) -> None:
+    """Откуда числа ответа: какие функции их дали и прошёл ли ответ проверку."""
+    if not turn.calls:
+        return
+    names = " · ".join(f"`{call['name']}`" for call in turn.calls)
+    checked = "проверка чисел пройдена" if turn.checked else "числа не сошлись, показан шаблон"
+    st.caption(f"Числа из функций: {names} — {checked}.")
+
+
 def render_details(call: dict, data: CaseData) -> None:
     """Таблица к результату функции: шаги, отправители, сеть и т. п. Числа те же, что в результате."""
     result, name = call["result"], call["name"]
@@ -99,10 +120,15 @@ def render_details(call: dict, data: CaseData) -> None:
         return
     table = None
     if name == "trace_money":
+        render_numbers([("Шагов", str(result["step_count"])), ("Счетов в цепочке", str(result["chain_count"])),
+                        ("Снято наличными", result["cash_text"]), ("Осталось на счетах", result["retained_text"]),
+                        ("Время цепочки", result["duration_text"])])
         table = pd.DataFrame([{"№": s["step"], "Время": s["time_text"], "Откуда": s["from"], "Куда": s["to"],
                                "Сумма": s["amount_text"], "Через": s.get("delay_text") or "—",
                                "Доля": s.get("share_text") or "—"} for s in result["steps"]])
     elif name == "trace_sources":
+        render_numbers([("Отправителей", str(result["sender_count"])), ("Переводов", str(result["transfer_count"])),
+                        ("Сумма", result["total_short_text"]), ("С жалобами", str(result["complaint_count"]))])
         table = pd.DataFrame([{"Отправитель": s["account"], "Оценка": dot(s["color"]), "Переводов": s["transfers"],
                                "Сумма": s["total_text"], "Первый перевод": s["first_time_text"],
                                "Жалоба": "есть" if s["complaint"] else ""} for s in result["senders"]])
@@ -119,11 +145,13 @@ def render_details(call: dict, data: CaseData) -> None:
                                "Риск модели": r["risk_text"], "Главная причина": r["main_reason"]} for r in result["rows"]])
     elif name == "account_profile":
         st.markdown(f"**{result['account']}** — {dot(result['color'])}")
+        render_numbers([("Риск модели", f"{result['risk_text']} ({result['risk_level']})"),
+                        ("Флажков", str(result["flag_count"])), ("Получено", result["received_text"]),
+                        ("Отправлено", result["sent_text"])])
         for phrase in result["flag_phrases"] or ["флажков нет"]:
             st.markdown(f"- {phrase}")
         if result.get("history_text"):
             st.caption(result["history_text"].capitalize())
-        st.caption(f"Оценка модели риска: {result['risk_text']} ({result['risk_level']}).")
     elif name == "search_knowledge":
         st.markdown("**Фрагменты базы знаний (дословно)**")
         for fragment in result["fragments"]:
@@ -141,6 +169,7 @@ def render_decisions(turn_index: int, accounts: list[str], data: CaseData, analy
     if not shown:
         return
     st.markdown("**Решение аналитика**")
+    st.caption(GUARDRAIL + " Решение пишется в журнал с вашим логином и оценкой риска на момент нажатия.")
     for account in shown:
         name, confirm, reject, state = st.columns([3, 1, 1, 2])
         name.markdown(f"{DOTS.get(data.color(account), '')} {account}")
@@ -163,6 +192,7 @@ def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, an
             st.caption("Ответ модели не прошёл проверку чисел, показан ответ по шаблону из результата функции.")
         elif turn.mode == "buttons":
             st.caption("Режим кнопок: ответ собран по шаблону из результата функции.")
+        render_sources(turn)
         for call in turn.calls:
             render_details(call, data)
 
@@ -187,7 +217,7 @@ def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, an
                                        key=f"download_{index}")
         if accounts:
             render_decisions(index, accounts, data, analyst)
-        with st.expander("Как получен ответ"):
+        with st.expander("Как получен ответ", expanded=True):
             st.caption(f"Режим: {'модель ' + (session.model.name if session.model else '') if turn.mode == 'llm' else 'кнопки'}"
                        f" · {turn.seconds:.1f} с · проверка чисел: {'пройдена' if turn.checked else 'не пройдена'}"
                        + (" со второй попытки" if turn.retried and turn.checked else ""))
@@ -212,6 +242,49 @@ def demo_questions() -> list[str]:
             f"{fmt.money(demo['victim_tenge'], 'KZT')} на {first}. Куда ушли деньги?",
             "Покажи на графе", f"Кто ещё переводил на {first}?", "Какая статья к этому относится?",
             "Подготовь справку для полиции", f"Заблокируй {first}"]
+
+
+def follow_up_questions(session: ChatSession, data: CaseData) -> list[str]:
+    """Подсказки для следующего вопроса: стартовые или по последнему ответу.
+
+    Счёт в подсказке — тот, что обсуждается сейчас, поэтому вопрос можно задать одним нажатием.
+    Уже вызванные функции не предлагаются второй раз.
+    """
+    if not session.turns:
+        return demo_questions() if data.name == KZ else GENERIC_STARTERS
+    focus, called = session.focus, {call["name"] for turn in session.turns for call in turn.calls}
+    questions = []
+    if session.turns[-1].graph and not session.turns[-1].show_graph:
+        questions.append("Покажи на графе")
+    if focus != "пока нет":
+        if "trace_money" not in called:
+            questions.append(f"Куда ушли деньги с {focus}?")
+        if "trace_sources" not in called:
+            questions.append(f"Кто ещё переводил на {focus}?")
+        if "account_profile" not in called:
+            questions.append(f"Почему {focus} подозрителен?")
+        if "find_network" not in called:
+            questions.append(f"Покажи сеть вокруг {focus}")
+        if "find_similar" not in called:
+            questions.append(f"Есть ли счета с таким же поведением, как {focus}?")
+    if "search_knowledge" not in called:
+        questions.append("Какая статья к этому относится?")
+    if session.case_accounts and "make_report" not in called:
+        questions.append("Подготовь справку для полиции")
+    return questions[:MAX_SUGGESTIONS]
+
+
+def render_suggestions(questions: list[str], label: str, key: str) -> str | None:
+    """Чипы-подсказки по три в ряд. Возвращает выбранный вопрос."""
+    if not questions:
+        return None
+    st.caption(label)
+    chosen = None
+    for start in range(0, len(questions), 3):
+        for column, text in zip(st.columns(3), questions[start:start + 3]):
+            if column.button(text, key=f"{key}_{text}", help=text, width="stretch"):
+                chosen = text
+    return chosen
 
 
 def render_buttons_mode(session: ChatSession, data: CaseData) -> None:
@@ -246,14 +319,9 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
         render_turn(index, turn, session, data, analyst)
 
     question = None
-    if ready and data.name == KZ:
-        st.caption("Быстрые вопросы для демо")
-        quick = demo_questions()
-        columns = st.columns(len(quick)) if quick else []
-        for column, text in zip(columns, quick):
-            if column.button(text if len(text) < 40 else text[:37] + "…", help=text, key=f"quick_{text}",
-                             width="stretch"):
-                question = text
+    if ready:
+        label = "Что можно спросить дальше" if session.turns else "С чего начать"
+        question = render_suggestions(follow_up_questions(session, data), label, f"quick_{data.name}")
     typed = st.chat_input("Спросите, например: куда ушли деньги клиентки?", disabled=not ready)
     question = typed or question
     if question:
@@ -338,7 +406,7 @@ def main() -> None:
         model_name = st.selectbox("Модель", [config["llm"]["model"], config["llm"]["fallback_model"]])
         client, ready = model_status(config, model_name)
         st.caption(f"Модель {model_name}: {'готова' if ready else 'недоступна'}")
-        st.caption("Помощник не блокирует счета и не записывает решения: это делает аналитик.")
+        st.caption(GUARDRAIL)
     st.warning(BANNER)
     st.title("BankRAG: чат-помощник аналитика антифрода")
     data = load_data(dataset)
