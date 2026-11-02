@@ -154,6 +154,8 @@ chat:
   trace_window_hours: 72
   trace_max_depth: 4
   trace_max_branches: 5
+  # След идёт по исходящим переводам по времени, пока не покрыта эта доля поступления.
+  trace_cover_share: 0.9
   network_depth: 2
   network_limit: 50
   # Узлы с таким числом контрагентов (магазины, работодатели) в сети не раскрываются.
