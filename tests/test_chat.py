@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from bankrag.chat.agent import ChatSession, run_tool, template_answer
+from bankrag.chat.agent import ChatSession, Turn, run_tool, template_answer
 from bankrag.chat.checker import Allowed, check_answer, extract
 from bankrag.chat.journal import read_queries
 from bankrag.chat.llm import LLMReply
@@ -87,6 +87,16 @@ def test_refusal_without_tools_and_context_for_graph(data: CaseData, tmp_path: P
     assert refusal.calls == [] and refusal.checked
     log = read_queries(journal)
     assert len(log) == 3 and set(log["analyst"]) == {"Альнур"}
+
+
+def test_focus_skips_victims(data: CaseData) -> None:
+    """Справка начинает список счетов с пострадавшей, но «этот счёт» — первый дроп, а не она."""
+    session = ChatSession(data, None, load_config())
+    result = {"summary": "Справка готова.", "accounts": ["KZ-1000", "KZ-1001", "KZ-1002"]}
+    session._remember(Turn("Подготовь справку", "Справка готова.",
+                           [{"name": "make_report", "arguments": {}, "result": result}]))
+    assert "KZ-1000" in data.victims
+    assert session.focus == "KZ-1001"
 
 
 def test_tool_limit_per_turn(data: CaseData) -> None:
