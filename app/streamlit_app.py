@@ -172,7 +172,9 @@ def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, an
             st.session_state[graph_key] = not st.session_state.get(graph_key, turn.show_graph)
         if turn.graph and st.session_state.get(graph_key, turn.show_graph):
             st.markdown(f"**{turn.graph['title']}**")
-            st.iframe(case_graph_html(turn.graph), height=540)
+            # Решения могли появиться после ответа: рамку подтверждённых счетов берём на момент показа.
+            graph = {**turn.graph, "nodes": [{**n, "confirmed": n["id"] in data.confirmed} for n in turn.graph["nodes"]]}
+            st.iframe(case_graph_html(graph), height=540)
             render_legend()
         accounts = [a for a in turn.accounts if a != F.CASH_NODE]
         report_path = turn.report_path

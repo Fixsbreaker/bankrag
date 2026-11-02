@@ -77,12 +77,12 @@ def case_graph_html(graph: dict, height: int = 520) -> str:
             title += ", подтверждён аналитиком"
         network.add_node(node["id"], label=node["label"], title=title, size=22,
                          color={"background": COLOR_HEX[node["color"]], "border": "#000000"},
-                         borderWidth=5 if node.get("confirmed") else 1, font={"size": 13})
+                         borderWidth=5 if node.get("confirmed") else 1, font={"size": 18})
     for edge in graph["edges"]:
         network.add_edge(edge["from"], edge["to"], label=edge.get("label", ""), title=edge.get("label", ""),
-                         font={"size": 10, "align": "top"}, arrows="to")
+                         font={"size": 15, "align": "top"}, arrows="to")
     network.set_options('''{"layout": {"hierarchical": {"enabled": true, "direction": "LR", "sortMethod": "directed",
-        "levelSeparation": 220, "nodeSpacing": 120}}, "physics": {"enabled": false}}''')
+        "levelSeparation": 260, "nodeSpacing": 140}}, "physics": {"enabled": false}}''')
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "graph.html"
         network.write_html(str(path), notebook=False, open_browser=False)
