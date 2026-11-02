@@ -9,11 +9,11 @@ import numpy as np
 import pandas as pd
 from pyvis.network import Network
 
-from bankrag.flags import COLOR_HEX, COLOR_TITLES
+from bankrag.flags import COLOR_HEX, COLOR_TITLES, ORANGE, RED
 
 MAX_COUNTERPARTIES = 25
-COLOR_SELECTED = "#d62728"
-COLOR_SIMILAR = "#ff7f0e"
+COLOR_SELECTED = COLOR_HEX[RED]
+COLOR_SIMILAR = COLOR_HEX[ORANGE]
 COLOR_COUNTERPARTY = "#b0b0b0"
 
 # Шаблон pyvis подключает Bootstrap с CDN даже в режиме in_line, а интерфейс работает без внешних запросов.

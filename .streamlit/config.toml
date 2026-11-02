@@ -7,3 +7,17 @@ headless = true
 
 [client]
 toolbarMode = "minimal"
+
+# Оформление: нейтральный фон, один синий акцент, системные шрифты.
+# Шрифты не загружаются из интернета: приложение должно работать без сети.
+[theme]
+base = "light"
+primaryColor = "#2f5bd0"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f5f4f1"
+textColor = "#15161a"
+linkColor = "#2f5bd0"
+borderColor = "#e3e2dd"
+font = "sans-serif"
+codeFont = "monospace"
+baseRadius = "medium"
