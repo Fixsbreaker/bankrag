@@ -160,7 +160,8 @@ class ChatSession:
             if accounts and call["name"] != "show_graph":
                 turn.accounts = accounts
                 # В фокусе первый счёт ответа, кроме пострадавшего в начале цепочки.
-                focus = result.get("account") or accounts[0]
+                # У справки и сети нет поля account, а список начинается с пострадавших.
+                focus = result.get("account") or next((a for a in accounts if a not in self.data.victims), accounts[0])
                 self.last_accounts = [focus, *[a for a in accounts if a != focus]]
             # Счета дела: цепочка денег и пострадавшие с жалобами. По ним собирается справка.
             if call["name"] == "trace_money" and not result.get("error"):
