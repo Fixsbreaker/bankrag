@@ -1,0 +1,60 @@
+{
+  "suspect_features": [
+    "currency_count",
+    "format_count",
+    "self_transfer_count"
+  ],
+  "top100_mean_contribution_all_features": {
+    "transit_ratio": 5.129152808589389,
+    "known_drop_neighbors": 2.3285805402561643,
+    "currency_count": 1.6581325625398853,
+    "self_transfer_count": 1.2135093225224605,
+    "unique_senders": 0.932005370077318,
+    "amount_log_mean": 0.6699843229562403,
+    "forward_minutes_min": 0.5241359129445087,
+    "format_count": 0.44860406819420967,
+    "amount_log_std": 0.3893220906339054,
+    "forward_minutes_median": 0.3516852019079667,
+    "unique_receivers": 0.32567608503413714,
+    "in_count": 0.09859417221524554,
+    "night_share": 0.06152082610817881,
+    "out_count": 0.04192642683849599,
+    "neighbor_degree_max": 0.03191276558875105,
+    "neighbor_degree_mean": 0.012634513097981324
+  },
+  "top100_mean_contribution_without_suspects": {
+    "transit_ratio": 6.032333830138061,
+    "known_drop_neighbors": 3.0226293549966345,
+    "forward_minutes_min": 1.0192041062484662,
+    "amount_log_mean": 0.8211955261952213,
+    "unique_senders": 0.7719092302897128,
+    "amount_log_std": 0.4605666316488939,
+    "out_count": 0.4447722851662536,
+    "unique_receivers": 0.433166394933661,
+    "in_count": 0.31934646923027743,
+    "forward_minutes_median": 0.13811892761751524,
+    "night_share": 0.10115243101775029,
+    "neighbor_degree_max": 0.06430280579782373,
+    "neighbor_degree_mean": 0.056564342808901186
+  },
+  "all_features": {
+    "features": 16,
+    "val_pr_auc": 0.6722105438589241,
+    "test_pr_auc": 0.45874347421611733,
+    "test_alerts": 204,
+    "test_drops_found": 58,
+    "test_drops": 97,
+    "test_drops_in_top100": 48,
+    "threshold": 0.3943203157181076
+  },
+  "without_suspects": {
+    "features": 13,
+    "val_pr_auc": 0.3243925390406235,
+    "test_pr_auc": 0.24313678653773624,
+    "test_alerts": 170,
+    "test_drops_found": 33,
+    "test_drops": 97,
+    "test_drops_in_top100": 30,
+    "threshold": 0.43191139709470505
+  }
+}
