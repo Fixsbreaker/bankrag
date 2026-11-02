@@ -23,4 +23,5 @@ run bankrag.kb_index
 run bankrag.kz_scenarios
 run bankrag.model --kz
 run bankrag.kz_scenarios --seeds 10
+run bankrag.model_audit
 echo "Готово. Метрики считает следующий шаг: make eval"

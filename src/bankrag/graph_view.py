@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from pyvis.network import Network
 
+from bankrag.flags import COLOR_HEX, COLOR_TITLES
+
 MAX_COUNTERPARTIES = 25
 COLOR_SELECTED = "#d62728"
 COLOR_SIMILAR = "#ff7f0e"
@@ -56,6 +58,31 @@ def network_html(account_id: str, similar: list[str], accounts: list[str], group
         title = f"переводов: {row.transfers}, сумма около {row.amount_usd:,.0f} USD".replace(",", " ")
         network.add_edge(row.from_account, row.to_account, title=title, width=float(1 + np.log1p(row.transfers)))
     network.toggle_physics(True)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "graph.html"
+        network.write_html(str(path), notebook=False, open_browser=False)
+        return remove_external_tags(path.read_text(encoding="utf-8"))
+
+
+def case_graph_html(graph: dict, height: int = 520) -> str:
+    """Граф из результата функции чата: цвет по уровню подозрения, на стрелках сумма и время."""
+    network = Network(height=f"{height}px", width="100%", directed=True, cdn_resources="in_line", bgcolor="#ffffff")
+    for node in graph["nodes"]:
+        if node["color"] == "cash":
+            network.add_node(node["id"], label=node["label"], shape="box", color="#ffffff", borderWidth=2,
+                             title="снятие наличных в банкомате")
+            continue
+        title = f"{node['id']}: {COLOR_TITLES[node['color']]}, флажков {node['flags']}"
+        if node.get("confirmed"):
+            title += ", подтверждён аналитиком"
+        network.add_node(node["id"], label=node["label"], title=title, size=22,
+                         color={"background": COLOR_HEX[node["color"]], "border": "#000000"},
+                         borderWidth=5 if node.get("confirmed") else 1, font={"size": 18})
+    for edge in graph["edges"]:
+        network.add_edge(edge["from"], edge["to"], label=edge.get("label", ""), title=edge.get("label", ""),
+                         font={"size": 15, "align": "top"}, arrows="to")
+    network.set_options('''{"layout": {"hierarchical": {"enabled": true, "direction": "LR", "sortMethod": "directed",
+        "levelSeparation": 260, "nodeSpacing": 140}}, "physics": {"enabled": false}}''')
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / "graph.html"
         network.write_html(str(path), notebook=False, open_browser=False)

@@ -2,86 +2,86 @@
   "seeds": [
     {
       "seed": 2027,
-      "drops": 109,
-      "drops_found": 63,
+      "drops": 162,
+      "drops_found": 30,
       "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2028,
-      "drops": 114,
-      "drops_found": 69,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 162,
+      "drops_found": 28,
+      "networks_found": 28,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2029,
-      "drops": 107,
-      "drops_found": 66,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 167,
+      "drops_found": 29,
+      "networks_found": 28,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2030,
-      "drops": 105,
-      "drops_found": 69,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 180,
+      "drops_found": 29,
+      "networks_found": 29,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2031,
-      "drops": 106,
-      "drops_found": 71,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 163,
+      "drops_found": 30,
+      "networks_found": 29,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2032,
-      "drops": 122,
-      "drops_found": 79,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 151,
+      "drops_found": 28,
+      "networks_found": 28,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2033,
-      "drops": 133,
-      "drops_found": 84,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 151,
+      "drops_found": 28,
+      "networks_found": 28,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2034,
-      "drops": 121,
-      "drops_found": 77,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 158,
+      "drops_found": 27,
+      "networks_found": 27,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2035,
-      "drops": 125,
-      "drops_found": 77,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 153,
+      "drops_found": 24,
+      "networks_found": 24,
+      "networks": 31,
+      "background_alerts": 0
     },
     {
       "seed": 2036,
-      "drops": 111,
-      "drops_found": 62,
-      "networks_found": 30,
-      "networks": 30,
-      "background_alerts": 17
+      "drops": 169,
+      "drops_found": 29,
+      "networks_found": 29,
+      "networks": 31,
+      "background_alerts": 0
     }
   ],
-  "share_min": 0.5585585585585585,
-  "share_median": 0.6242006886374816,
-  "share_max": 0.6698113207547169
+  "share_min": 0.1568627450980392,
+  "share_median": 0.173246100391809,
+  "share_max": 0.18543046357615894
 }

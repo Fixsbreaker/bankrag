@@ -1,4 +1,4 @@
-.PHONY: setup data build eval app test
+.PHONY: setup data build eval app test chat-eval check-llm
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -23,8 +23,19 @@ eval:
 	PYTHONPATH=src $(PY) -W ignore -m bankrag.evaluate > /dev/null
 	@echo "Отчёт: reports/metrics.md"
 
+# Приложение работает и без Ollama: тогда включается режим кнопок.
 app:
+	@$(PY) scripts/check_llm.py >/dev/null 2>&1 && echo "Ollama и модель готовы" || \
+		echo "Ollama или модель недоступны: чат будет в режиме кнопок. Проверка: make check-llm"
 	$(VENV)/bin/streamlit run app/streamlit_app.py
+
+check-llm:
+	$(PY) scripts/check_llm.py
+
+# Оценка чата на 30 вопросах для двух моделей. Нужна запущенная Ollama.
+chat-eval:
+	$(PY) -W ignore scripts/eval_chat.py --model qwen3:14b
+	$(PY) -W ignore scripts/eval_chat.py --model qwen3:8b
 
 test:
 	$(PY) -m pytest -q

@@ -52,6 +52,12 @@ REASON_TEMPLATES = {
 }
 
 
+# Аналитику показываются только причины, понятные человеку: сколько, когда, куда.
+# Валюты, форматы, переводы себе и степени соседей описывают особенности синтетики IBM, а не дропа.
+EXPLAINABLE_FEATURES = ["unique_senders", "unique_receivers", "in_count", "out_count", "transit_ratio",
+                        "forward_minutes_median", "forward_minutes_min", "night_share", "known_drop_neighbors"]
+
+
 def describe_reason(feature: str, value: float) -> str:
     """Переводит признак и его значение в понятную фразу."""
     if pd.isna(value):
@@ -63,12 +69,16 @@ def describe_reason(feature: str, value: float) -> str:
     return REASON_TEMPLATES[feature](float(value))
 
 
-def top_reasons(contributions: np.ndarray, values: np.ndarray, count: int = REASON_COUNT) -> list[list[str]]:
-    """Для каждого счёта берёт признаки, сильнее всего повышающие риск, и строит фразы."""
-    order = np.argsort(-contributions, axis=1)[:, :count]
+def top_reasons(contributions: np.ndarray, values: np.ndarray, count: int = REASON_COUNT,
+                columns: list[str] | None = None) -> list[list[str]]:
+    """Для каждого счёта берёт понятные признаки, сильнее всего повышающие риск, и строит фразы."""
+    columns = columns or FEATURE_COLUMNS
+    allowed = np.array([name in EXPLAINABLE_FEATURES for name in columns])
+    masked = np.where(allowed, contributions, -np.inf)
+    order = np.argsort(-masked, axis=1)[:, :count]
     reasons = []
-    for row, columns in enumerate(order):
-        phrases = [describe_reason(FEATURE_COLUMNS[c], values[row, c]) for c in columns if contributions[row, c] > 0]
+    for row, chosen in enumerate(order):
+        phrases = [describe_reason(columns[c], values[row, c]) for c in chosen if masked[row, c] > 0]
         reasons.append(phrases)
     return reasons
 

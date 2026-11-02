@@ -197,7 +197,17 @@ def evaluate_scenarios(processed: Path, rule: Rule, fast_rule: Rule, threshold: 
     metric = config["evaluate"]["similarity_metric"]
     index = build_hnsw(vectors, metric, settings["m"], settings["ef_construction"], settings["ef_search"])
     similar = SimilarityIndex(index, frame["account_id"].tolist(), vectors, metric)
+    # Флажки чата считаются по всем переводам сценария за 72 часа, магазины и банкоматы не оцениваются.
+    from bankrag.flags import compute_flags
+
+    edges = pd.read_parquet(processed / "edges_kz.parquet")
+    kinds = pd.read_parquet(processed / "kz_clients.parquet")
+    businesses = set(kinds.loc[kinds["kind"] != "client", "account_id"])
+    flags = compute_flags(edges, config["flags"], businesses)["flag_count"]
+    flag_count = frame["account_id"].map(flags).fillna(0)
     return {
+        "flags_two_or_more": detection(flag_count >= 2),
+        "flags_any": detection(flag_count >= 1),
         "seed": config["kz_scenarios"]["seed"],
         "networks": int(accounts["network_id"].nunique()), "drops": int(is_drop.sum()),
         "accounts_generated": len(accounts), "background_accounts": int(background.sum()),
@@ -296,13 +306,18 @@ def render_markdown(metrics: dict) -> str:
         lines += ["Сети сгенерированы командой: параметры заданы в конфигурации и не откалиброваны на реальных данных. "
                   "Модель на них не обучалась, пороги те же, что на тесте IBM.", "",
                   f"Сетей {kz['networks']}, дропов {kz['drops']}, счетов фона {thousands(kz['background_accounts'])}, "
-                  f"seed {kz['seed']}. Пороги правила быстрого транзита выбирались на других сетях, того же генератора. "
-                  "Правило ищет то, что заложено в генератор, поэтому цифры показывают, что система "
+                  f"seed {kz['seed']}. Пороги правила быстрого транзита выбирались на сетях прежнего генератора, "
+                  "пороги флажков — стартовые из обсуждения команды; на этом наборе ничего не подбиралось. "
+                  "Правила ищут то, что заложено в генератор, поэтому цифры показывают, что система "
                   "умеет ловить такую схему, а не то, что она сработает в реальном банке.", "",
                   "| Метод | Найдено дропов | Найдено сетей | Тревог на счетах фона |", "| --- | --- | --- | --- |"]
         for name, key in (("LightGBM", "model"), ("Правило", "rule"), ("Быстрый транзит", "fast_transit"),
-                          ("LightGBM или быстрый транзит", "model_or_fast_transit")):
-            row = kz[key]
+                          ("LightGBM или быстрый транзит", "model_or_fast_transit"),
+                          ("Флажки: 2 и больше (красный)", "flags_two_or_more"),
+                          ("Флажки: хотя бы один (красный или оранжевый)", "flags_any")):
+            row = kz.get(key)
+            if row is None:
+                continue
             lines.append(f"| {name} | {row['drops_found']} из {kz['drops']} | {row['networks_found']} из {kz['networks']} | {row['background_alerts']} |")
         score = f"{kz['model_max_drop_score']:.3f}".replace(".", ",")
         lines += ["", f"Наибольшая оценка дропа {score}, лучшее место дропа в очереди {kz['model_best_drop_rank']}. "
