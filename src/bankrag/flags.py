@@ -84,8 +84,9 @@ def compute_flags(edges: pd.DataFrame, settings: dict, businesses: set[str] | No
     paired = pair_outflows(edges, settings["window_hours"])
     # Покупки в магазинах — не пересылка денег дальше.
     paired = paired[~paired["receiver"].isin(businesses) | paired["is_withdrawal"]]
-    by_account = paired.groupby("account_id")
-    table["forwarded"] = by_account["out_amount"].sum()
+    # Дальше не может уйти больше, чем пришло: остальное — деньги, которые были на счёте раньше.
+    table["forwarded"] = paired.groupby("account_id")["out_amount"].sum()
+    table["forwarded"] = table["forwarded"].clip(upper=table["received"])
     table["forwarded"] = table["forwarded"].fillna(0)
     table["transit_share"] = (table["forwarded"] / table["received"]).where(table["received"] > 0)
 
