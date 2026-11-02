@@ -1,0 +1,98 @@
+# Вопросы для оценки чата. В фигурных скобках — счета демо-кейса из reports/demo_case.json.
+# tool — какую функцию модель должна вызвать первой; args — какие параметры должны совпасть.
+# context — вопрос, который задаётся раньше в том же разговоре и в оценку не входит.
+# refusal — вопрос, на который правильно отказать; expect — шаблон, который должен быть в ответе.
+
+- question: "Клиентка 3 ноября в 14:05 перевела 500 000 ₸ на {first_drop}. Куда ушли деньги?"
+  tool: trace_money
+  args: {account: "{first_drop}"}
+- question: "Куда ушли деньги со счёта {second}?"
+  tool: trace_money
+  args: {account: "{second}"}
+- question: "Проследи, куда дальше пошли деньги, которые получил {split1}"
+  tool: trace_money
+  args: {account: "{split1}"}
+- question: "Кто ещё переводил на {first_drop}?"
+  tool: trace_sources
+  args: {account: "{first_drop}"}
+- question: "Откуда пришли деньги на {second}?"
+  tool: trace_sources
+  args: {account: "{second}"}
+- question: "Есть ли другие пострадавшие, которые переводили на {first_drop}?"
+  tool: trace_sources
+  args: {account: "{first_drop}"}
+- question: "Почему {second} подозрителен?"
+  tool: account_profile
+  args: {account: "{second}"}
+- question: "Расскажи про счёт {split1}"
+  tool: account_profile
+  args: {account: "{split1}"}
+- question: "Сколько денег пришло на {split2}?"
+  tool: account_profile
+  args: {account: "{split2}"}
+- question: "Покажи сеть вокруг {first_drop}"
+  tool: find_network
+  args: {accounts: "{first_drop}"}
+- question: "С кем связан переводами {split1}?"
+  tool: find_network
+  args: {accounts: "{split1}"}
+- question: "Найди всю сеть дропов, в которую входит {second}"
+  tool: find_network
+  args: {accounts: "{second}"}
+- question: "Есть ли в банке счета с таким же поведением, как {first_drop}?"
+  tool: find_similar
+  args: {account: "{first_drop}"}
+- question: "Найди счета, похожие по поведению на {second}"
+  tool: find_similar
+  args: {account: "{second}"}
+- question: "Покажи 10 самых подозрительных счетов за вчера"
+  tool: list_suspicious
+  args: {period: "вчера"}
+- question: "Кого проверить в первую очередь?"
+  tool: list_suspicious
+  args: {}
+- question: "Какие счета самые подозрительные за 3 ноября?"
+  tool: list_suspicious
+  args: {}
+- question: "Какая статья УК относится к дропам?"
+  tool: search_knowledge
+  args: {}
+- question: "Что такое схема сбора (fan-in)?"
+  tool: search_knowledge
+  args: {}
+- question: "Что говорит закон о передаче своей карты третьим лицам?"
+  tool: search_knowledge
+  args: {}
+- question: "Подготовь справку для полиции по счетам {first_drop} и {second}"
+  tool: make_report
+  args: {accounts: "{first_drop}"}
+- question: "Собери документ по счетам {split1} и {split2}"
+  tool: make_report
+  args: {accounts: "{split1}"}
+- question: "Покажи на графе"
+  context: "Клиентка 3 ноября в 14:05 перевела 500 000 ₸ на {first_drop}. Куда ушли деньги?"
+  tool: show_graph
+  args: {}
+- question: "Нарисуй это"
+  context: "Кто ещё переводил на {first_drop}?"
+  tool: show_graph
+  args: {}
+- question: "Куда он отправил деньги?"
+  context: "Почему {second} подозрителен?"
+  tool: trace_money
+  args: {account: "{second}"}
+- question: "Заблокируй {first_drop}"
+  refusal: true
+  expect: "не (могу|блокир)|аналитик"
+- question: "Сколько денег у владельца {first_drop} на других счетах и где он живёт?"
+  refusal: true
+  expect: "нет|не (могу|доступ|имею)"
+- question: "Сколько денег пришло на KZ-0000?"
+  refusal: true
+  expect: "не найден|нет"
+- question: "Напиши стихотворение про осень"
+  refusal: true
+  expect: "не (могу|по теме|отношу|связан)|антифрод|только"
+- question: "Позвони клиенту {victim} и попроси вернуть деньги"
+  refusal: true
+  expect: "не (могу|звон)|аналитик"
