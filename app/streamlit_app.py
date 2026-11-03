@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from bankrag.faiss_safe import faiss  # noqa: E402, F401  # должен загружаться раньше scikit-learn
 
 import pandas as pd  # noqa: E402
+from pandas.io.formats.style import Styler  # noqa: E402
 import streamlit as st  # noqa: E402
 
 from bankrag.chat.agent import ChatSession, Turn  # noqa: E402
@@ -40,10 +41,13 @@ BANNER = ("Прототип. Данные синтетические (IBM AML, N
 FEEDBACK_PATH = ROOT / "data" / "feedback" / "feedback.sqlite"
 JOURNAL_PATH = ROOT / "data" / "feedback" / "journal.sqlite"
 SIMILARITY_INDEX = {KZ: "similarity_kz", IBM: "similarity_test"}
-DOTS = {"red": "🔴", "orange": "🟠", "grey": "⚪", "green": "🟢", "blue": "🔵"}
+MARK = ROOT / "app" / "assets" / "bankrag-mark.png"
+# Подпись уровня темнее заливки на графе: текст на белом должен читаться (контраст от 4,5:1).
+LABEL_HEX = {"red": "#8e1f25", "orange": "#7a4800", "grey": "#5a5e68", "green": "#1f5b4e", "blue": "#1f5168"}
+LABEL_COLORS = {f"● {title}": LABEL_HEX[color] for color, title in COLOR_TITLES.items()}
 DECISION_TITLES = {CONFIRMED: "подтвердил", REJECTED: "отклонил"}
 MAX_DECISION_ACCOUNTS = 8
-MAX_SUGGESTIONS = 6
+MAX_SUGGESTIONS = 4
 # Стартовые подсказки для набора IBM: конкретных номеров счетов тут не назвать, они длинные и случайные.
 GENERIC_STARTERS = ["Покажи 10 самых подозрительных счетов", "Кого проверить в первую очередь?",
                     "Что такое схема сбора (fan-in)?"]
@@ -86,8 +90,21 @@ def quote(text: str) -> str:
     return "> " + "  \n> ".join(lines)
 
 
-def dot(color: str) -> str:
-    return f"{DOTS.get(color, '')} {COLOR_TITLES.get(color, '')}"
+def mark(color: str) -> str:
+    """Уровень подозрения для таблицы: символ ● и подпись, цвет ставит styled()."""
+    return f"● {COLOR_TITLES.get(color, '')}"
+
+
+def mark_html(color: str, text: str) -> str:
+    """Цветной кружок перед текстом для markdown: цвет из палитры графа, а не эмодзи."""
+    return f"<span style='color:{COLOR_HEX.get(color, COLOR_HEX['grey'])}'>●</span> {text}"
+
+
+def styled(table: pd.DataFrame) -> pd.DataFrame | Styler:
+    """Таблица с колонкой «Оценка», окрашенной по уровню подозрения."""
+    if "Оценка" not in table.columns:
+        return table
+    return table.style.map(lambda value: f"color: {LABEL_COLORS.get(value, 'inherit')}", subset=["Оценка"])
 
 
 def render_legend() -> None:
@@ -129,22 +146,23 @@ def render_details(call: dict, data: CaseData) -> None:
     elif name == "trace_sources":
         render_numbers([("Отправителей", str(result["sender_count"])), ("Переводов", str(result["transfer_count"])),
                         ("Сумма", result["total_short_text"]), ("С жалобами", str(result["complaint_count"]))])
-        table = pd.DataFrame([{"Отправитель": s["account"], "Оценка": dot(s["color"]), "Переводов": s["transfers"],
+        table = pd.DataFrame([{"Отправитель": s["account"], "Оценка": mark(s["color"]), "Переводов": s["transfers"],
                                "Сумма": s["total_text"], "Первый перевод": s["first_time_text"],
                                "Жалоба": "есть" if s["complaint"] else ""} for s in result["senders"]])
     elif name == "find_network":
-        table = pd.DataFrame([{"Счёт": a["account"], "Оценка": dot(a["color"]), "Флажков": a["flags"]}
+        table = pd.DataFrame([{"Счёт": a["account"], "Оценка": mark(a["color"]), "Флажков": a["flags"]}
                               for a in result["accounts_detail"]])
     elif name == "find_similar":
         st.caption("Похожий почерк: эти счета не обязательно связаны переводами с выбранным.")
-        table = pd.DataFrame([{"Счёт": r["account"], "Оценка": dot(r["color"]), "Флажков": r["flags"],
+        table = pd.DataFrame([{"Счёт": r["account"], "Оценка": mark(r["color"]), "Флажков": r["flags"],
                                "Близость": r["similarity_text"],
                                "Связан переводами": "да" if r["linked_by_transfers"] else "нет"} for r in result["similar"]])
     elif name == "list_suspicious":
-        table = pd.DataFrame([{"Счёт": r["account"], "Оценка": dot(r["color"]), "Флажков": r["flags"],
+        table = pd.DataFrame([{"Счёт": r["account"], "Оценка": mark(r["color"]), "Флажков": r["flags"],
                                "Риск модели": r["risk_text"], "Главная причина": r["main_reason"]} for r in result["rows"]])
     elif name == "account_profile":
-        st.markdown(f"**{result['account']}** — {dot(result['color'])}")
+        st.markdown(f"**{result['account']}** — " + mark_html(result["color"], COLOR_TITLES[result["color"]]),
+                    unsafe_allow_html=True)
         render_numbers([("Риск модели", f"{result['risk_text']} ({result['risk_level']})"),
                         ("Флажков", str(result["flag_count"])), ("Получено", result["received_text"]),
                         ("Отправлено", result["sent_text"])])
@@ -159,7 +177,7 @@ def render_details(call: dict, data: CaseData) -> None:
             st.caption(f"{fragment['title']}. Источник: {fragment['source']}")
         st.caption("Текст приведён для сведения. Правовую оценку даёт уполномоченный орган.")
     if table is not None and len(table):
-        st.dataframe(table, hide_index=True, width="stretch")
+        st.dataframe(styled(table), hide_index=True, width="stretch")
 
 
 def render_decisions(turn_index: int, accounts: list[str], data: CaseData, analyst: str) -> None:
@@ -172,7 +190,7 @@ def render_decisions(turn_index: int, accounts: list[str], data: CaseData, analy
     st.caption(GUARDRAIL + " Решение пишется в журнал с вашим логином и оценкой риска на момент нажатия.")
     for account in shown:
         name, confirm, reject, state = st.columns([3, 1, 1, 2])
-        name.markdown(f"{DOTS.get(data.color(account), '')} {account}")
+        name.markdown(mark_html(data.color(account), account), unsafe_allow_html=True)
         if confirm.button("Подтвердить", key=f"confirm_{turn_index}_{account}"):
             save_decision(FEEDBACK_PATH, account, CONFIRMED, data.risk(account), analyst, data.name)
             decisions[account] = CONFIRMED
@@ -184,9 +202,9 @@ def render_decisions(turn_index: int, accounts: list[str], data: CaseData, analy
 
 
 def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, analyst: str) -> None:
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=":material/person:"):
         st.markdown(turn.question)
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=str(MARK)):
         st.markdown(turn.answer)
         if turn.fallback:
             st.caption("Ответ модели не прошёл проверку чисел, показан ответ по шаблону из результата функции.")
@@ -341,12 +359,12 @@ def render_queue(data: CaseData, analyst: str) -> None:
     table = table.sort_values(["flag_count", "risk"], ascending=False).head(data.config["app"]["queue_rows"])
     decisions = all_latest_decisions(FEEDBACK_PATH)
     view = pd.DataFrame({
-        "Счёт": table.index, "Оценка": [dot(data.color(a)) for a in table.index], "Флажков": table["flag_count"].to_numpy(),
+        "Счёт": table.index, "Оценка": [mark(data.color(a)) for a in table.index], "Флажков": table["flag_count"].to_numpy(),
         "Риск модели": table["risk"].to_numpy(),
         "Главная причина": [(F.flag_phrases(data, a) or data.model_reasons(a) or ["—"])[0] for a in table.index],
         "Решение": [DECISION_TITLES.get(decisions.get(a), "") for a in table.index]})
     st.caption(f"Счетов с флажками или заметным риском: {len(view)} из {len(data.flags)}. Выберите строку.")
-    selection = st.dataframe(view, hide_index=True, width="stretch", height=360, on_select="rerun",
+    selection = st.dataframe(styled(view), hide_index=True, width="stretch", height=360, on_select="rerun",
                              selection_mode="single-row", key=f"queue_{data.name}",
                              column_config={"Риск модели": st.column_config.NumberColumn(format="%.3f")})
     if not selection.selection.rows:
@@ -397,7 +415,8 @@ def render_journal() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="BankRAG", layout="wide")
+    st.set_page_config(page_title="BankRAG", page_icon=str(MARK), layout="wide")
+    st.logo(str(MARK), size="large")
     config = load_config()
     with st.sidebar:
         st.header("BankRAG")
