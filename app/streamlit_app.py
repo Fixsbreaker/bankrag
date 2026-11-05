@@ -390,7 +390,7 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
                 st.markdown(template_answer(calls))
                 for call in calls:
                     render_details(call, data)
-            status.update(label="Результат функции готов. Модель пишет пересказ, код проверяет числа…")
+            status.update(label="Результат функции готов. Модель пишет пересказ, код проверяет числа…", expanded=True)
 
         try:
             session.ask(question, on_tools=show_results)
