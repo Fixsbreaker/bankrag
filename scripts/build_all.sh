@@ -21,6 +21,7 @@ run bankrag.model
 run bankrag.similarity
 run bankrag.kb_index
 run bankrag.kz_scenarios
+run bankrag.owners
 run bankrag.model --kz
 run bankrag.kz_scenarios --seeds 10
 run bankrag.model_audit
