@@ -60,7 +60,8 @@ def test_tune_rule_finds_separating_thresholds() -> None:
 def test_describe_reason_is_readable() -> None:
     assert describe_reason("unique_senders", 12) == "разных отправителей: 12"
     assert describe_reason("transit_ratio", 0.95) == "ушло дальше 95% от полученной суммы"
-    assert describe_reason("transit_ratio", 283.0) == "отправлено в 283 раз больше, чем получено"
+    assert describe_reason("transit_ratio", 283.0) == "отправлено в 283 раза больше, чем получено"
+    assert describe_reason("transit_ratio", 5.0) == "отправлено в 5 раз больше, чем получено"
     assert describe_reason("forward_minutes_median", float("nan")) == "после входящих переводов исходящих не было"
 
 
