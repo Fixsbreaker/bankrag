@@ -164,6 +164,20 @@ def rescore(config: dict, processed: Path) -> None:
     table.to_parquet(processed / "scores.parquet", index=False)
     score_scenarios(config, processed)
     print(f"пересчитано счетов IBM: {len(table)}, наибольшее изменение оценки: {drift:.2e}")
+    summarize_explanations(processed, ROOT / config["paths"]["reports_dir"])
+
+
+def summarize_explanations(processed: Path, reports: Path) -> dict:
+    """Какую долю понижения оценки дают особенности данных IBM: у дропов и у остальных счетов сценария."""
+    scores = pd.read_parquet(processed / "kz_scores.parquet", columns=["label", "down_hidden", "up_hidden"])
+    summary = {}
+    for name, part in (("drops", scores[scores["label"] == DROP]), ("other", scores[scores["label"] != DROP])):
+        summary[name] = {"accounts": len(part), "down_hidden_median": float(part["down_hidden"].median()),
+                         "down_hidden_over_half": int((part["down_hidden"] > 0.5).sum()),
+                         "up_hidden_median": float(part["up_hidden"].median())}
+    (reports / "model_explain_kz.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return summary
 
 
 def main() -> None:
