@@ -263,7 +263,7 @@ def demo_questions() -> list[str]:
     return [f"Клиентка {when.day} {fmt.MONTHS[when.month - 1]} в {when:%H:%M} перевела "
             f"{fmt.money(demo['victim_tenge'], 'KZT')} на {first}. Куда ушли деньги?",
             "Покажи на графе", f"Кто ещё переводил на {first}?", "Какая статья к этому относится?",
-            "Подготовь справку для полиции", f"Заблокируй {first}"]
+            "Подготовь справку для полиции", "Есть ли среди клиентов лица из перечня АФМ?", f"Заблокируй {first}"]
 
 
 def follow_up_questions(session: ChatSession, data: CaseData) -> list[str]:
