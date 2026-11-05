@@ -125,3 +125,13 @@ def test_question_about_account_forces_tool_call(data: CaseData) -> None:
     turn = ChatSession(data, model, load_config()).ask("Почему KZ-1002 подозрителен?")
     assert [c["name"] for c in turn.calls] == ["account_profile"]
     assert model.requests[1][-1]["content"].startswith("Сначала вызови")
+
+
+def test_results_are_shown_before_model_text(data: CaseData) -> None:
+    """on_tools получает результат функции до пересказа: в этот момент модель ещё не писала ответ."""
+    model = StubModel([_call("account_profile", account="KZ-1002"), LLMReply("У KZ-1002 есть флажок дробления.")])
+    seen: list[tuple[list[str], int]] = []
+    turn = ChatSession(data, model, load_config()).ask(
+        "Что с KZ-1002?", on_tools=lambda calls: seen.append(([c["name"] for c in calls], len(model.requests))))
+    assert seen == [(["account_profile"], 1)]
+    assert turn.tools_seconds is not None and turn.tools_seconds <= turn.seconds

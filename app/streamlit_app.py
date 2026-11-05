@@ -22,7 +22,7 @@ import pandas as pd  # noqa: E402
 from pandas.io.formats.style import Styler  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from bankrag.chat.agent import ChatSession, Turn  # noqa: E402
+from bankrag.chat.agent import ChatSession, Turn, template_answer  # noqa: E402
 from bankrag.chat.journal import read_queries  # noqa: E402
 from bankrag.chat.llm import LLMError, OllamaClient  # noqa: E402
 from bankrag.data_loader import load_config  # noqa: E402
@@ -35,6 +35,7 @@ from bankrag.similarity import SimilarityIndex  # noqa: E402
 from bankrag.tools import fmt  # noqa: E402
 from bankrag.tools import functions as F  # noqa: E402
 from bankrag.tools.data import DATASET_TITLES, IBM, KZ, CaseData, load_case_data  # noqa: E402
+from bankrag.tools.timeline import timeline_chart  # noqa: E402
 
 BANNER = ("Прототип. Данные синтетические (IBM AML, NeurIPS 2023) и сценарии, сгенерированные командой. "
           "Решение принимает аналитик.")
@@ -140,6 +141,12 @@ def render_details(call: dict, data: CaseData) -> None:
         render_numbers([("Шагов", str(result["step_count"])), ("Счетов в цепочке", str(result["chain_count"])),
                         ("Снято наличными", result["cash_text"]), ("Осталось на счетах", result["retained_text"]),
                         ("Время цепочки", result["duration_text"])])
+        chart = timeline_chart(result["steps"])
+        if chart is not None:
+            st.markdown("**Таймлайн: как быстро уходили деньги**")
+            st.altair_chart(chart, width="stretch")
+            st.caption("Полоса — сколько деньги лежали на счёте до следующего перевода, точка — поступление, "
+                       "красный ромб — снятие наличных.")
         table = pd.DataFrame([{"№": s["step"], "Время": s["time_text"], "Откуда": s["from"], "Куда": s["to"],
                                "Сумма": s["amount_text"], "Через": s.get("delay_text") or "—",
                                "Доля": s.get("share_text") or "—"} for s in result["steps"]])
@@ -167,11 +174,12 @@ def render_details(call: dict, data: CaseData) -> None:
                         ("Флажков", str(result["flag_count"])), ("Получено", result["received_text"]),
                         ("Отправлено", result["sent_text"])])
         for phrase in result.get("list_phrases", []):
-            st.error(phrase)
+            (st.warning if phrase.startswith("владелец похож") else st.error)(phrase)
         for phrase in result["flag_phrases"] or ["флажков нет"]:
             st.markdown(f"- {phrase}")
         if result.get("history_text"):
             st.caption(result["history_text"].capitalize())
+        render_model_factors(result)
     elif name == "check_lists":
         render_lists(result)
     elif name == "search_knowledge":
@@ -182,6 +190,23 @@ def render_details(call: dict, data: CaseData) -> None:
         st.caption("Текст приведён для сведения. Правовую оценку даёт уполномоченный орган.")
     if table is not None and len(table):
         st.dataframe(styled(table), hide_index=True, width="stretch")
+
+
+def render_model_factors(result: dict) -> None:
+    """Что повысило и что понизило оценку модели: доли вкладов признаков LightGBM."""
+    if not result.get("model_up") and not result.get("model_down"):
+        return
+    with st.expander(f"Почему у модели оценка {result['risk_text']}"):
+        up, down = st.columns(2)
+        for column, title, key in ((up, "Повысили оценку", "up"), (down, "Понизили оценку", "down")):
+            with column:
+                st.markdown(f"**{title}**")
+                for factor in result.get(f"model_{key}", []):
+                    st.markdown(f"- {factor['text']} — {factor['share_text']}")
+                st.caption(f"Особенности данных IBM (валюты, форматы, суммы, переводы себе, связи соседей): "
+                           f"{result[f'model_{key}_hidden_text']}")
+        st.caption("Доля — часть суммы вкладов признаков (pred_contrib LightGBM) в эту сторону. Признаки модели "
+                   "считаются за своё окно, поэтому числа могут немного отличаться от флажков.")
 
 
 def render_decisions(turn_index: int, accounts: list[str], data: CaseData, analyst: str) -> None:
@@ -237,11 +262,16 @@ def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, an
             buttons[1].download_button("Скачать DOCX", Path(report_path).read_bytes(), file_name=Path(report_path).name,
                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                        key=f"download_{index}")
+            appendix = Path(report_path).with_suffix(".json")
+            if appendix.exists():
+                buttons[1].download_button("Скачать JSON", appendix.read_bytes(), file_name=appendix.name,
+                                           mime="application/json", key=f"download_json_{index}")
         if accounts:
             render_decisions(index, accounts, data, analyst)
         with st.expander("Как получен ответ", expanded=True):
             st.caption(f"Режим: {'модель ' + (session.model.name if session.model else '') if turn.mode == 'llm' else 'кнопки'}"
-                       f" · {turn.seconds:.1f} с · проверка чисел: {'пройдена' if turn.checked else 'не пройдена'}"
+                       + (f" · результат функции через {turn.tools_seconds:.1f} с" if turn.tools_seconds else "")
+                       + f" · ответ через {turn.seconds:.1f} с · проверка чисел: {'пройдена' if turn.checked else 'не пройдена'}"
                        + (" со второй попытки" if turn.retried and turn.checked else ""))
             if turn.unknown:
                 st.caption("Числа, которых не было в результатах: " + ", ".join(turn.unknown))
@@ -347,9 +377,23 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
     typed = st.chat_input("Спросите, например: куда ушли деньги клиентки?", disabled=not ready)
     question = typed or question
     if question:
+        with st.chat_message("user", avatar=":material/person:"):
+            st.markdown(question)
+        with st.chat_message("assistant", avatar=str(MARK)):
+            status = st.status("Модель выбирает функцию…", expanded=True)
+            preview = status.empty()
+
+        def show_results(calls: list[dict]) -> None:
+            # Результат функции посчитан кодом — его можно показать сразу. Текст модели появится
+            # только после проверки чисел, непроверенные числа на экран не попадают.
+            with preview.container():
+                st.markdown(template_answer(calls))
+                for call in calls:
+                    render_details(call, data)
+            status.update(label="Результат функции готов. Модель пишет пересказ, код проверяет числа…", expanded=True)
+
         try:
-            with st.spinner("Модель выбирает функции и пишет ответ…"):
-                session.ask(question)
+            session.ask(question, on_tools=show_results)
         except LLMError as error:
             st.error(f"Модель не ответила: {error}. Используйте режим кнопок.")
         st.rerun()
@@ -357,16 +401,24 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
 
 def render_lists(result: dict) -> None:
     """Результат сверки с перечнями АФМ: совпадения, контрагенты и источник перечней."""
-    for hit in result.get("hits", []):
-        st.error(f"{hit['list_title']}: «{hit['listed_name']}» · совпадение по: {hit['match']}"
-                 + (f" · включён {hit['added_to_list']}" if hit.get("added_to_list") else ""))
+    similar = result.get("similar")
+    hits = result.get("hits", []) + (similar if isinstance(similar, list) and similar and "list" in similar[0] else [])
+    for hit in hits:
+        text = (f"{hit['list_title']}: «{hit['listed_name']}» · совпадение по: {hit['match']}"
+                + (f" · включён {hit['added_to_list']}" if hit.get("added_to_list") else ""))
+        if hit.get("strict", True):
+            st.error(text)
+        else:
+            st.warning(text.replace("совпадение по: ", ""))
         if hit.get("is_demo"):
             st.caption("Это вымышленная тестовая запись для демо, в настоящих перечнях её нет.")
-    # Обзор без счёта отдаёт список в listed, проверка счёта — контрагентов из перечней.
+    # Обзор без счёта отдаёт список в listed и similar, проверка счёта — контрагентов из перечней.
     listed = result.get("listed")
-    rows = listed if isinstance(listed, list) else result.get("counterparties")
+    rows = (listed + (similar or [])) if isinstance(listed, list) else result.get("counterparties")
     if rows:
         st.dataframe(pd.DataFrame([{"Счёт": r["account"], "Владелец": r.get("owner") or "—",
+                                    "Совпадение": "точное" if r["hits"][0].get("strict", True)
+                                    else f"похоже ({r['hits'][0]['similarity']}%), проверить",
                                     "Перечень": r["hits"][0]["list_short"], "Входящих": r["incoming_count"],
                                     "Сумма входящих": r["incoming_total_text"], "Исходящих": r["outgoing_count"],
                                     "Последний перевод": r["last_time_text"]} for r in rows]),
@@ -374,19 +426,22 @@ def render_lists(result: dict) -> None:
         if any(h.get("is_demo") for r in rows for h in r["hits"]):
             st.caption("Тестовая запись демо вымышлена, в настоящих перечнях её нет.")
     st.caption(f"Перечни АФМ РК: {result['list_records_text']} записей, загружены {result['lists_downloaded_text']}, "
-               f"источник {result['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения.")
+               f"источник {result['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения; "
+               "похожее написание (опечатка, латиница) — только «проверить вручную».")
 
 
 def render_queue(data: CaseData, analyst: str) -> None:
     """Очередь: счета по числу флажков и оценке модели, под ней профиль выбранного."""
-    listed = data.flags.index.isin(set(data.list_hits))
+    listed = data.flags.index.isin(set(data.list_hits) | set(data.list_similar))
     table = data.flags[listed | ~data.flags.index.isin(data.businesses | data.victims)].copy()
     table["risk"] = data.scores["risk_score"].reindex(table.index).fillna(0)
     table["listed"] = table.index.isin(set(data.list_hits))
-    table = table[table["listed"] | (table["flag_count"] > 0)
+    table["similar"] = table.index.isin(set(data.list_similar))
+    table = table[table["listed"] | table["similar"] | (table["flag_count"] > 0)
                   | (table["risk"] >= data.high_risk * data.config["colors"]["medium_risk_share"])]
-    # Лица из перечней АФМ — в начале очереди независимо от флажков.
-    table = table.sort_values(["listed", "flag_count", "risk"], ascending=False).head(data.config["app"]["queue_rows"])
+    # Лица из перечней АФМ — в начале очереди независимо от флажков, следом похожие на них.
+    table = table.sort_values(["listed", "similar", "flag_count", "risk"],
+                              ascending=False).head(data.config["app"]["queue_rows"])
     decisions = all_latest_decisions(FEEDBACK_PATH)
     view = pd.DataFrame({
         "Счёт": table.index, "Оценка": [mark(data.color(a)) for a in table.index], "Флажков": table["flag_count"].to_numpy(),

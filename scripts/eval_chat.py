@@ -55,23 +55,33 @@ def percent(value: float) -> str:
     return f"{value * 100:.0f}%"
 
 
+def tools_time(m: dict) -> str:
+    """Время до результата функции; у старых прогонов его не измеряли."""
+    if m.get("tools_seconds_mean") is None:
+        return "не измерялось"
+    return f"{m['tools_seconds_mean']:.1f} / {m['tools_seconds_p95']:.1f}"
+
+
 def render(metrics: dict) -> str:
     """Таблица по всем моделям, прогнанным скриптом."""
     lines = ["# Метрики чата", "",
              "Получено запуском `scripts/eval_chat.py` на казахстанском сценарии (сгенерирован командой). "
              "Вопросы и ожидаемые функции — в `tests/chat_eval/questions.yaml`.", "",
              "| Модель | Вопросов | Верная функция | Верные параметры | Ответ не прошёл проверку чисел | "
-             "Показан шаблон | Верные отказы | Время, среднее / p95, с |",
-             "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+             "Показан шаблон | Верные отказы | Результат функции на экране, среднее / p95, с | "
+             "Проверенный ответ, среднее / p95, с |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
     for name, m in metrics.items():
         lines.append(f"| {name} | {m['questions']} | {m['tool_correct']} из {m['tool_questions']} "
                      f"({percent(m['tool_accuracy'])}) | {m['args_correct']} из {m['tool_questions']} "
                      f"({percent(m['args_accuracy'])}) | {m['check_failed']} из {m['questions']} "
                      f"({percent(m['check_failed_share'])}) | {m['fallback']} | {m['refusal_correct']} из "
-                     f"{m['refusal_questions']} | {m['seconds_mean']:.1f} / {m['seconds_p95']:.1f} |")
+                     f"{m['refusal_questions']} | {tools_time(m)} | {m['seconds_mean']:.1f} / {m['seconds_p95']:.1f} |")
     lines += ["", "«Не прошёл проверку чисел» — первый ответ модели содержал число или счёт, которых нет в результатах "
               "функций. Такой ответ не показывается: модель переписывает его, а при второй ошибке показывается шаблон "
-              "из результата функции. Поэтому ни один показанный ответ не содержит непроверенных чисел.", ""]
+              "из результата функции. Поэтому ни один показанный ответ не содержит непроверенных чисел.", "",
+              "«Результат функции на экране» — когда интерфейс показывает результат функции (числа посчитаны кодом), "
+              "пока модель пишет пересказ. Считается по вопросам, где функция вызывалась.", ""]
     for name, m in metrics.items():
         wrong = [r for r in m["rows"] if not r["correct"]]
         if wrong:
@@ -98,7 +108,7 @@ def main() -> None:
     demo = json.loads((ROOT / "reports" / "demo_case.json").read_text(encoding="utf-8"))
     accounts = {"first_drop": demo["first_drop"], "second": demo["layers"][1][0], "split1": demo["layers"][-1][0],
                 "split2": demo["layers"][-1][-1], "victim": demo["victim"],
-                "listed": json.loads((ROOT / "reports" / "watchlist.json").read_text(encoding="utf-8"))["demo_account"]}
+                "listed": json.loads((ROOT / "reports" / "watchlist.json").read_text(encoding="utf-8"))["demo_accounts"]["DEMO-1"]}
     items = yaml.safe_load(QUESTIONS.read_text(encoding="utf-8"))[:args.limit]
 
     rows = []
@@ -121,12 +131,16 @@ def main() -> None:
             correct = bool(args_ok)
         rows.append({"question": question, "expected": expected, "called": ", ".join(called), "tool_ok": tool_ok,
                      "args_ok": args_ok, "correct": correct, "first_check_passed": first_check,
-                     "fallback": turn.fallback, "seconds": round(turn.seconds, 2), "answer": turn.answer})
+                     "fallback": turn.fallback, "seconds": round(turn.seconds, 2),
+                     "tools_seconds": round(turn.tools_seconds, 2) if turn.tools_seconds is not None else None,
+                     "answer": turn.answer})
         print(f"{number:2d}. {'OK ' if correct else 'ERR'} {turn.seconds:5.1f} с  {question}  →  {called}", flush=True)
 
     tool_rows = [r for r in rows if r["tool_ok"] is not None]
     refusal_rows = [r for r in rows if r["tool_ok"] is None]
     seconds = np.array([r["seconds"] for r in rows])
+    # Время до результата функции — только у вопросов, где функция вызывалась.
+    tools_seconds = np.array([r["tools_seconds"] for r in rows if r["tools_seconds"] is not None])
     result = {
         "questions": len(rows), "tool_questions": len(tool_rows), "refusal_questions": len(refusal_rows),
         "tool_correct": sum(r["tool_ok"] for r in tool_rows), "args_correct": sum(bool(r["args_ok"]) for r in tool_rows),
@@ -136,7 +150,9 @@ def main() -> None:
         "check_failed_share": float(np.mean([not r["first_check_passed"] for r in rows])),
         "fallback": sum(r["fallback"] for r in rows),
         "refusal_correct": sum(r["correct"] for r in refusal_rows),
-        "seconds_mean": float(seconds.mean()), "seconds_p95": float(np.percentile(seconds, 95)), "rows": rows,
+        "seconds_mean": float(seconds.mean()), "seconds_p95": float(np.percentile(seconds, 95)),
+        "tools_seconds_mean": float(tools_seconds.mean()) if len(tools_seconds) else None,
+        "tools_seconds_p95": float(np.percentile(tools_seconds, 95)) if len(tools_seconds) else None, "rows": rows,
     }
     if args.limit is None:
         metrics = json.loads(REPORT_JSON.read_text(encoding="utf-8")) if REPORT_JSON.exists() else {}

@@ -78,6 +78,9 @@
 - question: "Есть ли среди клиентов лица из перечня АФМ?"
   tool: check_lists
   args: {}
+- question: "Проверь по перечням АФМ человека Qairat Testov"
+  tool: check_lists
+  args: {name: "Qairat Testov"}
 - question: "Покажи на графе"
   context: "Клиентка 3 ноября в 14:05 перевела 500 000 ₸ на {first_drop}. Куда ушли деньги?"
   tool: show_graph

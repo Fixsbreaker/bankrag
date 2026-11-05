@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,8 @@ class Turn:
     fallback: bool = False
     unknown: list[str] = field(default_factory=list)
     seconds: float = 0.0
+    # Через сколько секунд были готовы результаты функций (их можно показать до пересказа модели).
+    tools_seconds: float | None = None
     mode: str = "llm"
     graph: dict | None = None
     show_graph: bool = False
@@ -189,14 +192,19 @@ class ChatSession:
         return self._remember(Turn(question, template_answer(calls), calls, mode="buttons",
                                    seconds=time.perf_counter() - started))
 
-    def ask(self, question: str) -> Turn:
-        """Ответ на вопрос аналитика через модель с проверкой чисел."""
+    def ask(self, question: str, on_tools: Callable[[list[dict]], None] | None = None) -> Turn:
+        """Ответ на вопрос аналитика через модель с проверкой чисел.
+
+        on_tools вызывается после каждого раунда функций, до пересказа модели: интерфейс сразу
+        показывает результат функции (числа из кода), а текст модели — только после проверки чисел.
+        """
         if self.model is None:
             raise LLMError("модель не подключена")
         started = time.perf_counter()
         limit = self.config["llm"]["max_tool_calls"]
         messages = [self._system(), *self.history, {"role": "user", "content": question}]
         calls: list[dict] = []
+        tools_seconds = None
         reply = self.model.chat(messages, TOOL_SPECS)
         if not reply.tool_calls and NEEDS_TOOL.search(question) and not REFUSAL_REQUEST.search(question):
             # Вопрос о конкретном счёте без вызова функции — ответ был бы выдуман.
@@ -213,6 +221,10 @@ class ChatSession:
                 result = run_tool(self.data, call["name"], call["arguments"], self)
                 calls.append({"name": call["name"], "arguments": call["arguments"], "result": result})
                 messages.append({"role": "tool", "tool_name": call["name"], "content": _for_model(call["name"], result)})
+            if tools_seconds is None:
+                tools_seconds = time.perf_counter() - started
+            if on_tools is not None:
+                on_tools(list(calls))
             # После лимита вызовов модель только пишет ответ.
             reply = self.model.chat(messages, TOOL_SPECS if len(calls) < limit else None)
         answer = THINK_TAG.sub("", reply.content or "").strip()
@@ -225,7 +237,7 @@ class ChatSession:
         for call in calls:
             allowed.add(call["result"])
         check = check_answer(answer, allowed)
-        turn = Turn(question, answer, calls, unknown=check.unknown)
+        turn = Turn(question, answer, calls, unknown=check.unknown, tools_seconds=tools_seconds)
         if not answer or not check.ok:
             hint = ("В ответе есть числа или счета, которых нет в результатах функций: " + ", ".join(check.unknown)
                     + ". Перепиши ответ, используя только числа и счета из результатов.") if answer else \

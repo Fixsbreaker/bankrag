@@ -1,0 +1,14 @@
+{
+  "drops": {
+    "accounts": 171,
+    "down_hidden_median": 0.4977752338922835,
+    "down_hidden_over_half": 82,
+    "up_hidden_median": 0.1279817357305985
+  },
+  "other": {
+    "accounts": 2829,
+    "down_hidden_median": 0.3935484258799193,
+    "down_hidden_over_half": 1203,
+    "up_hidden_median": 0.26045084756366055
+  }
+}

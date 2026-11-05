@@ -4,21 +4,25 @@
 дата рождения и ИИН, магазину и работодателю — название ТОО и БИН. ИИН и БИН нарочно недействительны
 (неверная контрольная цифра), поэтому не могут совпасть с настоящими.
 
-Один магазин получает владельца из тестовой записи configs/watchlist_demo.json: на нём демо показывает,
-как перевод лицу из перечня попадает к аналитику. ФИО, которые случайно совпали с записью настоящего
-перечня, пропускаются: реальным людям синтетические переводы не приписываются.
+Тестовые записи configs/watchlist_demo.json получают по одному счёту:
+- организация (DEMO-1) — магазин, которому платит больше всего разных клиентов: точное совпадение, красный;
+- человек (DEMO-2, ФИО латиницей) — чистый клиент, чаще всех плативший этому магазину; у владельца то же ФИО
+  кириллицей: нечёткое совпадение, «проверить вручную».
+ФИО, которые совпали или похожи на запись настоящего перечня, пропускаются: реальным людям синтетические
+переводы не приписываются.
 
     PYTHONPATH=src python -m bankrag.owners
 """
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
 
 from bankrag.data_loader import ROOT, load_config
-from bankrag.watchlist import DEMO_CATEGORY, ORGANIZATION, PERSON, load_watchlist, normalize_name
+from bankrag.watchlist import ORGANIZATION, PERSON, Watchlist, load_watchlist, normalize_name
 
 SURNAMES = ["Ахметов", "Беков", "Жумабаев", "Искаков", "Касымов", "Нурланов", "Оспанов", "Сапаров", "Тлеубаев",
             "Утепов", "Есенов", "Кенжебаев", "Мухамедов", "Садыков", "Ергалиев", "Аманов", "Бекмуратов", "Жаксылыков",
@@ -66,9 +70,19 @@ def is_valid_number(number: str) -> bool:
     return control != 10 and control == int(number[11])
 
 
-def generate_owners(clients: pd.DataFrame, edges: pd.DataFrame, real_names: set[str], demo: dict | None,
-                    seed: int) -> tuple[pd.DataFrame, str | None, int]:
-    """Владельцы всех счетов, кроме банкоматов. Возвращает таблицу, счёт демо и число пропущенных совпадений ФИО."""
+# Владелец демо-клиента: то же ФИО, что у записи DEMO-2, но кириллицей.
+DEMO_PERSON_OWNER = "Тестов Кайрат Демоевич"
+
+
+def generate_owners(clients: pd.DataFrame, edges: pd.DataFrame, real_names: set[str], demo: list[dict] | None,
+                    seed: int, labels: pd.Series | None = None,
+                    similar_to_real: Callable[[str, str, str | None], bool] | None = None,
+                    ) -> tuple[pd.DataFrame, dict[str, str], int]:
+    """Владельцы всех счетов, кроме банкоматов.
+
+    Возвращает таблицу, счета демо (id записи → счёт) и число пропущенных ФИО, совпавших или похожих на
+    записи настоящих перечней.
+    """
     random = np.random.default_rng(seed)
     rows: list[dict] = []
     skipped = 0
@@ -90,7 +104,8 @@ def generate_owners(clients: pd.DataFrame, edges: pd.DataFrame, real_names: set[
                    f"{_patronymic(str(random.choice(FATHER_NAMES)), female)}"
             birth = pd.Timestamp(1960, 1, 1) + pd.Timedelta(days=int(random.integers(0, 44 * 365)))
             key = (normalize_name(name), birth.date().isoformat())
-            if normalize_name(name) in real_names:
+            if normalize_name(name) in real_names or (
+                    similar_to_real is not None and similar_to_real(name, PERSON, birth.date().isoformat())):
                 skipped += 1
                 continue
             if key not in used:
@@ -102,23 +117,40 @@ def generate_owners(clients: pd.DataFrame, edges: pd.DataFrame, real_names: set[
                      "iin_bin": invalid_number(head), "birth_date": birth.date().isoformat()})
     owners = pd.DataFrame(rows, columns=OWNER_COLUMNS)
 
-    demo_account = None
-    if demo is not None:
+    demo_accounts: dict[str, str] = {}
+    by_kind = {str(r.get("type", "")).startswith(ORGANIZATION): r for r in (demo or [])}
+    org, person = by_kind.get(True), by_kind.get(False)
+    merchant = None
+    if org is not None:
         merchants = set(clients.loc[clients["kind"] == "merchant", "account_id"])
         incoming = edges[edges["to_account"].isin(merchants)]
         # Магазин, которому платит больше всего разных клиентов: в демо видно, что переводов к лицу из перечня много.
-        demo_account = str(incoming.groupby("to_account")["from_account"].nunique().sort_values(
+        merchant = str(incoming.groupby("to_account")["from_account"].nunique().sort_values(
             ascending=False, kind="stable").index[0])
-        owners.loc[owners["account_id"] == demo_account, ["owner_name", "iin_bin"]] = [demo["full_name"], demo["iin"]]
-    return owners, demo_account, skipped
+        owners.loc[owners["account_id"] == merchant, ["owner_name", "iin_bin"]] = [org["full_name"], org["iin"]]
+        demo_accounts[str(org["id"])] = merchant
+    if person is not None:
+        ordinary = set(clients.loc[clients["kind"] == "client", "account_id"])
+        if labels is not None:
+            ordinary &= set(labels[labels == "clean"].index)
+        candidates = edges[edges["from_account"].isin(ordinary)]
+        if merchant is not None and (candidates["to_account"] == merchant).any():
+            candidates = candidates[candidates["to_account"] == merchant]
+        client = str(candidates.groupby("from_account").size().sort_values(ascending=False, kind="stable").index[0])
+        birth = person["date_of_birth"]
+        head = f"{pd.Timestamp(birth):%y%m%d}3{random.integers(0, 10**4):04d}"
+        owners.loc[owners["account_id"] == client, ["owner_name", "iin_bin", "birth_date"]] = [
+            DEMO_PERSON_OWNER, invalid_number(head), birth]
+        demo_accounts[str(person["id"])] = client
+    return owners, demo_accounts, skipped
 
 
-def screen_owners(owners: pd.DataFrame, root=ROOT) -> pd.DataFrame:
-    """Совпадения владельцев с перечнями: одна строка на совпадение."""
-    watchlist = load_watchlist(root)
+def screen_owners(owners: pd.DataFrame, watchlist: Watchlist) -> pd.DataFrame:
+    """Совпадения владельцев с перечнями, точные и похожие: одна строка на совпадение."""
     rows = []
-    for row in owners.itertuples(index=False):
-        for hit in watchlist.screen(row.owner_name, row.owner_kind, row.birth_date, row.iin_bin):
+    similar = watchlist.screen_similar_many(list(zip(owners["owner_name"], owners["owner_kind"], owners["birth_date"])))
+    for row, fuzzy in zip(owners.itertuples(index=False), similar):
+        for hit in watchlist.screen(row.owner_name, row.owner_kind, row.birth_date, row.iin_bin) + fuzzy:
             rows.append({"account_id": row.account_id, **hit.as_dict()})
     return pd.DataFrame(rows)
 
@@ -129,13 +161,18 @@ def main() -> None:
     reports = ROOT / config["paths"]["reports_dir"]
     clients = pd.read_parquet(processed / "kz_clients.parquet")
     edges = pd.read_parquet(processed / "edges_kz.parquet")
-    watchlist = load_watchlist(ROOT)
-    real_names = {normalize_name(r.full_name) for r in watchlist.records if r.category != DEMO_CATEGORY}
+    threshold = config["watchlist"]["fuzzy_threshold"]
+    watchlist = load_watchlist(ROOT, fuzzy_threshold=threshold)
+    real = load_watchlist(ROOT, include_demo=False, fuzzy_threshold=threshold)
+    real_names = {normalize_name(r.full_name) for r in real.records}
     demo_path = ROOT / "configs" / "watchlist_demo.json"
-    demo = json.loads(demo_path.read_text(encoding="utf-8"))[0] if demo_path.exists() else None
-    owners, demo_account, skipped = generate_owners(clients, edges, real_names, demo, config["kz_scenarios"]["seed"])
+    demo = json.loads(demo_path.read_text(encoding="utf-8")) if demo_path.exists() else None
+    labels = pd.read_parquet(processed / "kz_scores.parquet").set_index("account_id")["label"]
+    owners, demo_accounts, skipped = generate_owners(
+        clients, edges, real_names, demo, config["kz_scenarios"]["seed"], labels,
+        lambda name, kind, birth: bool(real.screen_similar(name, kind, birth)))
     owners.to_parquet(processed / "kz_owners.parquet", index=False)
-    hits = screen_owners(owners)
+    hits = screen_owners(owners, watchlist)
     summary = {
         "lists_downloaded_at": watchlist.downloaded_at,
         "list_records": watchlist.counts,
@@ -144,9 +181,11 @@ def main() -> None:
         "persons": int((owners["owner_kind"] == PERSON).sum()),
         "organizations": int((owners["owner_kind"] == ORGANIZATION).sum()),
         "generated_names_skipped_as_real": skipped,
-        "demo_account": demo_account,
+        "fuzzy_threshold": threshold,
+        "demo_accounts": demo_accounts,
         "hits": hits.to_dict("records") if len(hits) else [],
         "hits_real_lists": int((~hits["is_demo"]).sum()) if len(hits) else 0,
+        "similar_hits_real_lists": int((~hits["is_demo"] & ~hits["strict"]).sum()) if len(hits) else 0,
     }
     (reports / "watchlist.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, default=str),
                                             encoding="utf-8")

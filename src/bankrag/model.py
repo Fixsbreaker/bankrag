@@ -30,6 +30,13 @@ def _as_count(value: float) -> str:
     return f"{value:.0f}"
 
 
+def _times(value: float) -> str:
+    """«в 2 раза», «в 5 раз», «в 21 раз»."""
+    count = int(round(value))
+    tail, tens = count % 10, count % 100
+    return f"{count} раза" if 2 <= tail <= 4 and not 12 <= tens <= 14 else f"{count} раз"
+
+
 # Каждая фраза описывает значение признака за окно; 48 часов подставляются при выводе.
 REASON_TEMPLATES = {
     "unique_senders": lambda v: f"разных отправителей: {_as_count(v)}",
@@ -38,7 +45,7 @@ REASON_TEMPLATES = {
     "out_count": lambda v: f"исходящих переводов: {_as_count(v)}",
     "self_transfer_count": lambda v: f"переводов самому себе: {_as_count(v)}",
     "transit_ratio": lambda v: (f"ушло дальше {v * 100:.0f}% от полученной суммы" if v <= 2
-                                else f"отправлено в {v:.0f} раз больше, чем получено"),
+                                else f"отправлено в {_times(v)} больше, чем получено"),
     "forward_minutes_median": lambda v: f"деньги уходят дальше в среднем (медиана) через {v:.0f} мин.",
     "forward_minutes_min": lambda v: f"самая быстрая пересылка за {v:.0f} мин.",
     "night_share": lambda v: f"доля ночных операций: {v * 100:.0f}%",
@@ -83,6 +90,31 @@ def top_reasons(contributions: np.ndarray, values: np.ndarray, count: int = REAS
     return reasons
 
 
+def explain_rows(contributions: np.ndarray, values: np.ndarray, count: int = REASON_COUNT,
+                 columns: list[str] | None = None) -> list[dict]:
+    """Вклад признаков в оценку каждого счёта (pred_contrib LightGBM) в долях.
+
+    up — понятные признаки, сильнее всего повысившие оценку, и их доля среди всех повышающих вкладов;
+    up_hidden — доля повышения от признаков, описывающих особенности синтетики IBM (валюты, форматы,
+    суммы, переводы себе, связи соседей). down и down_hidden — то же для понижающих вкладов.
+    """
+    columns = columns or FEATURE_COLUMNS
+    allowed = np.array([name in EXPLAINABLE_FEATURES for name in columns])
+    rows = []
+    for row, contrib in enumerate(contributions):
+        entry: dict = {}
+        for side, sign in (("up", 1.0), ("down", -1.0)):
+            signed = contrib * sign
+            positive = np.where(signed > 0, signed, 0.0)
+            total = positive.sum()
+            order = [c for c in np.argsort(-np.where(allowed, positive, -1.0))[:count] if allowed[c] and positive[c] > 0]
+            entry[f"{side}_text"] = [describe_reason(columns[c], values[row, c]) for c in order]
+            entry[f"{side}_share"] = [float(positive[c] / total) for c in order] if total > 0 else []
+            entry[f"{side}_hidden"] = float(positive[~allowed].sum() / total) if total > 0 else 0.0
+        rows.append(entry)
+    return rows
+
+
 def train_model(train: pd.DataFrame, validation: pd.DataFrame, params: dict[str, Any],
                 num_boost_round: int, early_stopping_rounds: int) -> Any:
     """Обучает LightGBM с ранней остановкой на валидации. Чистые и дропы, без прочих помеченных."""
@@ -112,7 +144,8 @@ def score_table(model: Any, features: pd.DataFrame) -> pd.DataFrame:
     table = features[["account_id", "window", "period", "label"]].copy()
     table["risk_score"] = model.predict(values, num_iteration=model.best_iteration)
     table["reasons"] = top_reasons(contributions, values.to_numpy(dtype=float))
-    return table
+    explained = pd.DataFrame(explain_rows(contributions, values.to_numpy(dtype=float)), index=table.index)
+    return pd.concat([table, explained], axis=1)
 
 
 def score_scenarios(config: dict, processed: Path) -> None:
@@ -125,13 +158,47 @@ def score_scenarios(config: dict, processed: Path) -> None:
     print(f"оценено счетов: {len(features)}")
 
 
+def rescore(config: dict, processed: Path) -> None:
+    """Пересчитывает оценки и объяснения сохранённой моделью, не обучая её: метрики не меняются."""
+    import lightgbm as lgb
+
+    model = lgb.Booster(model_file=str(ROOT / "models" / "model.txt"))
+    features = pd.read_parquet(processed / "features.parquet")
+    old = pd.read_parquet(processed / "scores.parquet", columns=["account_id", "window", "risk_score"])
+    table = score_table(model, features[features["period"] != "train"])
+    merged = old.merge(table[["account_id", "window", "risk_score"]], on=["account_id", "window"], suffixes=("_old", ""))
+    drift = float((merged["risk_score"] - merged["risk_score_old"]).abs().max()) if len(merged) else 0.0
+    table.to_parquet(processed / "scores.parquet", index=False)
+    score_scenarios(config, processed)
+    print(f"пересчитано счетов IBM: {len(table)}, наибольшее изменение оценки: {drift:.2e}")
+    summarize_explanations(processed, ROOT / config["paths"]["reports_dir"])
+
+
+def summarize_explanations(processed: Path, reports: Path) -> dict:
+    """Какую долю понижения оценки дают особенности данных IBM: у дропов и у остальных счетов сценария."""
+    scores = pd.read_parquet(processed / "kz_scores.parquet", columns=["label", "down_hidden", "up_hidden"])
+    summary = {}
+    for name, part in (("drops", scores[scores["label"] == DROP]), ("other", scores[scores["label"] != DROP])):
+        summary[name] = {"accounts": len(part), "down_hidden_median": float(part["down_hidden"].median()),
+                         "down_hidden_over_half": int((part["down_hidden"] > 0.5).sum()),
+                         "up_hidden_median": float(part["up_hidden"].median())}
+    (reports / "model_explain_kz.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    return summary
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kz", action="store_true", help="оценить казахстанские сценарии, не обучая модель")
+    parser.add_argument("--rescore", action="store_true",
+                        help="пересчитать оценки и объяснения IBM и сценариев сохранённой моделью, не обучая")
     args = parser.parse_args()
     config = load_config()
     if args.kz:
         score_scenarios(config, ROOT / config["paths"]["processed_dir"])
+        return
+    if args.rescore:
+        rescore(config, ROOT / config["paths"]["processed_dir"])
         return
     processed: Path = ROOT / config["paths"]["processed_dir"]
     settings = config["model"]
