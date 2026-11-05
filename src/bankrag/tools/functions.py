@@ -372,6 +372,37 @@ def _history_text(data: CaseData, account: str) -> str:
     return f"обычные операции: зарплата {salary}, покупки {purchases}"
 
 
+HIDDEN_FEATURES_TEXT = "особенности данных IBM (валюты, форматы платежей, суммы, переводы себе, связи соседей)"
+
+
+def model_factors(data: CaseData, account: str) -> dict:
+    """Вклад признаков в оценку модели понятными фразами с долями (pred_contrib LightGBM)."""
+    explained = data.model_explanation(account)
+    if explained is None:
+        return {"model_up": [], "model_down": [], "model_factors_text": ""}
+
+    def side(name: str) -> tuple[list[dict], str]:
+        part = explained[name]
+        # Вклады меньше 1% не показываются: «0%» рядом с причиной только путает.
+        factors = [{**f, "share_text": fmt.percent(f["share"])} for f in part["factors"] if f["share"] >= 0.01]
+        pieces = [f"{f['text']} ({f['share_text']})" for f in factors]
+        if part["hidden"] >= 0.005:
+            pieces.append(f"{HIDDEN_FEATURES_TEXT} ({fmt.percent(part['hidden'])})")
+        return factors, "; ".join(pieces)
+
+    up, up_text = side("up")
+    down, down_text = side("down")
+    parts = []
+    if up_text:
+        parts.append(f"повысили оценку: {up_text}")
+    if down_text:
+        parts.append(f"понизили: {down_text}")
+    return {"model_up": up, "model_down": down, "model_up_hidden_text": fmt.percent(explained["up"]["hidden"]),
+            "model_down_hidden_text": fmt.percent(explained["down"]["hidden"]),
+            "model_factors_text": ("Вклад признаков в оценку модели (доля среди повышающих или понижающих): "
+                                   + "; ".join(parts) + ".") if parts else ""}
+
+
 def account_profile(data: CaseData, account: str) -> dict:
     """Профиль счёта: цвет, флажки, оценка модели, основные числа."""
     account = data.normalize_account(account)
@@ -399,7 +430,10 @@ def account_profile(data: CaseData, account: str) -> dict:
     if data.kinds.size:
         summary += f" {_history_text(data, account).capitalize()}."
     summary += f" Оценка модели риска: {risk_text} ({level})."
-    return {"account": account, "kind": KIND_TITLES.get(kind, kind), "color": color, "color_text": COLOR_TITLES[color],
+    factors = model_factors(data, account)
+    if factors["model_factors_text"]:
+        summary += " " + factors["model_factors_text"]
+    return {**factors, "account": account, "kind": KIND_TITLES.get(kind, kind), "color": color, "color_text": COLOR_TITLES[color],
             "flags": [FLAG_TITLES[f] for f in FLAGS if row[f]], "flag_count": len(phrases), "flag_phrases": phrases,
             "risk": risk, "risk_text": risk_text, "risk_level": level, "model_reasons": reasons[:3],
             "received": float(row["received"]), "received_text": money(row["received"]), "sent": float(row["sent"]),

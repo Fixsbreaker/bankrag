@@ -21,6 +21,8 @@ DATASET_TITLES = {KZ: "Казахстанский сценарий (сгенер
 MONTHS = {"января": 1, "февраля": 2, "марта": 3, "апреля": 4, "мая": 5, "июня": 6, "июля": 7, "августа": 8,
           "сентября": 9, "октября": 10, "ноября": 11, "декабря": 12}
 BUSINESS_KINDS = {"employer", "merchant", "atm"}
+# Вклады признаков из bankrag.model.explain_rows (есть после `python -m bankrag.model --rescore`).
+EXPLAIN_COLUMNS = ["up_text", "up_share", "up_hidden", "down_text", "down_share", "down_hidden"]
 KIND_TITLES = {"client": "клиент", "employer": "работодатель", "merchant": "магазин", "atm": "банкомат"}
 
 
@@ -114,6 +116,14 @@ class CaseData:
     def model_reasons(self, account: str) -> list[str]:
         return list(self.scores.at[account, "reasons"]) if account in self.scores.index else []
 
+    def model_explanation(self, account: str) -> dict | None:
+        """Что повысило и что понизило оценку модели: фразы, доли и доля скрытых признаков IBM."""
+        if account not in self.scores.index or "up_text" not in self.scores.columns:
+            return None
+        row = self.scores.loc[account]
+        return {side: {"factors": [{"text": str(t), "share": float(v)} for t, v in zip(row[f"{side}_text"], row[f"{side}_share"])],
+                       "hidden": float(row[f"{side}_hidden"])} for side in ("up", "down")}
+
     def color(self, account: str) -> str:
         row = self.flags.loc[account] if account in self.flags.index else None
         colors = self.config["colors"]
@@ -184,7 +194,8 @@ def load_case_data(name: str, config: dict, root: Path, confirmed: set[str] | No
         owners = pd.DataFrame()
         currency = "USD"
     edges = edges.astype({"from_account": "object", "to_account": "object"})
-    scores = scores.set_index("account_id")[["risk_score", "reasons"]]
+    explained = [c for c in EXPLAIN_COLUMNS if c in scores.columns]
+    scores = scores.set_index("account_id")[["risk_score", "reasons", *explained]]
     return CaseData(name, currency, edges, scores, kinds, complaints, config, high_risk, set(confirmed or set()),
                     owners=owners,
                     watchlist=load_watchlist(root, fuzzy_threshold=config.get("watchlist", {}).get("fuzzy_threshold", 88)))

@@ -172,6 +172,7 @@ def render_details(call: dict, data: CaseData) -> None:
             st.markdown(f"- {phrase}")
         if result.get("history_text"):
             st.caption(result["history_text"].capitalize())
+        render_model_factors(result)
     elif name == "check_lists":
         render_lists(result)
     elif name == "search_knowledge":
@@ -182,6 +183,23 @@ def render_details(call: dict, data: CaseData) -> None:
         st.caption("Текст приведён для сведения. Правовую оценку даёт уполномоченный орган.")
     if table is not None and len(table):
         st.dataframe(styled(table), hide_index=True, width="stretch")
+
+
+def render_model_factors(result: dict) -> None:
+    """Что повысило и что понизило оценку модели: доли вкладов признаков LightGBM."""
+    if not result.get("model_up") and not result.get("model_down"):
+        return
+    with st.expander(f"Почему у модели оценка {result['risk_text']}"):
+        up, down = st.columns(2)
+        for column, title, key in ((up, "Повысили оценку", "up"), (down, "Понизили оценку", "down")):
+            with column:
+                st.markdown(f"**{title}**")
+                for factor in result.get(f"model_{key}", []):
+                    st.markdown(f"- {factor['text']} — {factor['share_text']}")
+                st.caption(f"Особенности данных IBM (валюты, форматы, суммы, переводы себе, связи соседей): "
+                           f"{result[f'model_{key}_hidden_text']}")
+        st.caption("Доля — часть суммы вкладов признаков (pred_contrib LightGBM) в эту сторону. Признаки модели "
+                   "считаются за своё окно, поэтому числа могут немного отличаться от флажков.")
 
 
 def render_decisions(turn_index: int, accounts: list[str], data: CaseData, analyst: str) -> None:

@@ -83,6 +83,31 @@ def top_reasons(contributions: np.ndarray, values: np.ndarray, count: int = REAS
     return reasons
 
 
+def explain_rows(contributions: np.ndarray, values: np.ndarray, count: int = REASON_COUNT,
+                 columns: list[str] | None = None) -> list[dict]:
+    """Вклад признаков в оценку каждого счёта (pred_contrib LightGBM) в долях.
+
+    up — понятные признаки, сильнее всего повысившие оценку, и их доля среди всех повышающих вкладов;
+    up_hidden — доля повышения от признаков, описывающих особенности синтетики IBM (валюты, форматы,
+    суммы, переводы себе, связи соседей). down и down_hidden — то же для понижающих вкладов.
+    """
+    columns = columns or FEATURE_COLUMNS
+    allowed = np.array([name in EXPLAINABLE_FEATURES for name in columns])
+    rows = []
+    for row, contrib in enumerate(contributions):
+        entry: dict = {}
+        for side, sign in (("up", 1.0), ("down", -1.0)):
+            signed = contrib * sign
+            positive = np.where(signed > 0, signed, 0.0)
+            total = positive.sum()
+            order = [c for c in np.argsort(-np.where(allowed, positive, -1.0))[:count] if allowed[c] and positive[c] > 0]
+            entry[f"{side}_text"] = [describe_reason(columns[c], values[row, c]) for c in order]
+            entry[f"{side}_share"] = [float(positive[c] / total) for c in order] if total > 0 else []
+            entry[f"{side}_hidden"] = float(positive[~allowed].sum() / total) if total > 0 else 0.0
+        rows.append(entry)
+    return rows
+
+
 def train_model(train: pd.DataFrame, validation: pd.DataFrame, params: dict[str, Any],
                 num_boost_round: int, early_stopping_rounds: int) -> Any:
     """Обучает LightGBM с ранней остановкой на валидации. Чистые и дропы, без прочих помеченных."""
@@ -112,7 +137,8 @@ def score_table(model: Any, features: pd.DataFrame) -> pd.DataFrame:
     table = features[["account_id", "window", "period", "label"]].copy()
     table["risk_score"] = model.predict(values, num_iteration=model.best_iteration)
     table["reasons"] = top_reasons(contributions, values.to_numpy(dtype=float))
-    return table
+    explained = pd.DataFrame(explain_rows(contributions, values.to_numpy(dtype=float)), index=table.index)
+    return pd.concat([table, explained], axis=1)
 
 
 def score_scenarios(config: dict, processed: Path) -> None:
@@ -125,13 +151,33 @@ def score_scenarios(config: dict, processed: Path) -> None:
     print(f"оценено счетов: {len(features)}")
 
 
+def rescore(config: dict, processed: Path) -> None:
+    """Пересчитывает оценки и объяснения сохранённой моделью, не обучая её: метрики не меняются."""
+    import lightgbm as lgb
+
+    model = lgb.Booster(model_file=str(ROOT / "models" / "model.txt"))
+    features = pd.read_parquet(processed / "features.parquet")
+    old = pd.read_parquet(processed / "scores.parquet", columns=["account_id", "window", "risk_score"])
+    table = score_table(model, features[features["period"] != "train"])
+    merged = old.merge(table[["account_id", "window", "risk_score"]], on=["account_id", "window"], suffixes=("_old", ""))
+    drift = float((merged["risk_score"] - merged["risk_score_old"]).abs().max()) if len(merged) else 0.0
+    table.to_parquet(processed / "scores.parquet", index=False)
+    score_scenarios(config, processed)
+    print(f"пересчитано счетов IBM: {len(table)}, наибольшее изменение оценки: {drift:.2e}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kz", action="store_true", help="оценить казахстанские сценарии, не обучая модель")
+    parser.add_argument("--rescore", action="store_true",
+                        help="пересчитать оценки и объяснения IBM и сценариев сохранённой моделью, не обучая")
     args = parser.parse_args()
     config = load_config()
     if args.kz:
         score_scenarios(config, ROOT / config["paths"]["processed_dir"])
+        return
+    if args.rescore:
+        rescore(config, ROOT / config["paths"]["processed_dir"])
         return
     processed: Path = ROOT / config["paths"]["processed_dir"]
     settings = config["model"]
