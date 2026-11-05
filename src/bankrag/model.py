@@ -30,6 +30,13 @@ def _as_count(value: float) -> str:
     return f"{value:.0f}"
 
 
+def _times(value: float) -> str:
+    """«в 2 раза», «в 5 раз», «в 21 раз»."""
+    count = int(round(value))
+    tail, tens = count % 10, count % 100
+    return f"{count} раза" if 2 <= tail <= 4 and not 12 <= tens <= 14 else f"{count} раз"
+
+
 # Каждая фраза описывает значение признака за окно; 48 часов подставляются при выводе.
 REASON_TEMPLATES = {
     "unique_senders": lambda v: f"разных отправителей: {_as_count(v)}",
@@ -38,7 +45,7 @@ REASON_TEMPLATES = {
     "out_count": lambda v: f"исходящих переводов: {_as_count(v)}",
     "self_transfer_count": lambda v: f"переводов самому себе: {_as_count(v)}",
     "transit_ratio": lambda v: (f"ушло дальше {v * 100:.0f}% от полученной суммы" if v <= 2
-                                else f"отправлено в {v:.0f} раз больше, чем получено"),
+                                else f"отправлено в {_times(v)} больше, чем получено"),
     "forward_minutes_median": lambda v: f"деньги уходят дальше в среднем (медиана) через {v:.0f} мин.",
     "forward_minutes_min": lambda v: f"самая быстрая пересылка за {v:.0f} мин.",
     "night_share": lambda v: f"доля ночных операций: {v * 100:.0f}%",
