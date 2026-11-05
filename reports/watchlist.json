@@ -5,14 +5,18 @@
     "sanction_category_2": 1184,
     "sanction_category_3": 239,
     "sanction_category_4": 486,
-    "demo": 1
+    "demo": 2
   },
   "real_records": 3489,
   "owners": 3179,
   "persons": 3084,
   "organizations": 95,
   "generated_names_skipped_as_real": 1,
-  "demo_account": "KZ-6315",
+  "fuzzy_threshold": 88,
+  "demo_accounts": {
+    "DEMO-1": "KZ-6315",
+    "DEMO-2": "KZ-7415"
+  },
   "hits": [
     {
       "account_id": "KZ-6315",
@@ -22,11 +26,29 @@
       "record_id": "DEMO-1",
       "listed_name": "ТОО «Тестовая запись BankRAG»",
       "listed_kind": "organization",
-      "listed_birth_date": null,
+      "listed_birth_date": NaN,
       "added_to_list": "2026-11-02",
       "match": "ИИН/БИН",
-      "is_demo": true
+      "is_demo": true,
+      "strict": true,
+      "similarity": NaN
+    },
+    {
+      "account_id": "KZ-7415",
+      "list": "demo",
+      "list_title": "Тестовая запись BankRAG (вымышленная, для демо)",
+      "list_short": "тестовая запись демо",
+      "record_id": "DEMO-2",
+      "listed_name": "Testov Qairat Demoevich",
+      "listed_kind": "person",
+      "listed_birth_date": "1991-03-14",
+      "added_to_list": "2026-11-02",
+      "match": "похожее написание (100%) — проверить вручную",
+      "is_demo": true,
+      "strict": false,
+      "similarity": 100.0
     }
   ],
-  "hits_real_lists": 0
+  "hits_real_lists": 0,
+  "similar_hits_real_lists": 0
 }

@@ -63,14 +63,22 @@ def flag_phrases(data: CaseData, account: str) -> list[str]:
     return phrases
 
 
+def _hit_phrase(hit: dict) -> str:
+    added = f", включён {fmt.date(hit['added_to_list'])}" if hit["added_to_list"] else ""
+    if hit.get("strict", True):
+        return f"владелец в перечне ({hit['list_short']}): «{hit['listed_name']}»{added}; совпадение по: {hit['match']}"
+    birth = f", дата рождения в перечне {fmt.date(hit['listed_birth_date'])}" if hit.get("listed_birth_date") else ""
+    return f"владелец похож на запись перечня ({hit['list_short']}): «{hit['listed_name']}»{birth}{added}; {hit['match']}"
+
+
 def list_phrases(data: CaseData, account: str) -> list[str]:
-    """Совпадения владельца счёта с перечнями АФМ понятными фразами."""
-    phrases = []
-    for hit in data.list_hits.get(account, []):
-        added = f", включён {fmt.date(hit['added_to_list'])}" if hit["added_to_list"] else ""
-        phrases.append(f"владелец в перечне ({hit['list_short']}): «{hit['listed_name']}»{added}; "
-                       f"совпадение по: {hit['match']}")
-    return phrases
+    """Совпадения владельца счёта с перечнями АФМ понятными фразами: точные и похожие."""
+    return [_hit_phrase(h) for h in data.list_hits.get(account, []) + data.list_similar.get(account, [])]
+
+
+def _list_entries(data: CaseData) -> dict[str, list[dict]]:
+    """Все счета с совпадениями: точные и похожие."""
+    return {**data.list_similar, **data.list_hits}
 
 
 def _lists_meta(data: CaseData) -> dict:
@@ -106,31 +114,49 @@ def check_lists(data: CaseData, account: str | None = None, name: str | None = N
               f"{meta['lists_downloaded_text']}) и тестовой записью демо.")
     if name and not account:
         hits = [h.as_dict() for h in data.watchlist.lookup(name)]
-        if hits:
-            lines = "; ".join(f"«{h['listed_name']}» ({h['list_short']}, совпадение по: {h['match']})" for h in hits)
-            summary = f"По запросу «{name}» найдено в перечнях: {lines}. {source}"
-        else:
-            summary = f"По запросу «{name}» в перечнях ничего не найдено. {source}"
-        return {**meta, "query": name, "hits": hits, "hit_count": len(hits), "summary": summary, "accounts": []}
+        exact = [h for h in hits if h["strict"]]
+        similar = [h for h in hits if not h["strict"]]
+        parts = []
+        if exact:
+            parts.append(f"По запросу «{name}» найдено в перечнях: " + "; ".join(
+                f"«{h['listed_name']}» ({h['list_short']}, совпадение по: {h['match']})" for h in exact) + ".")
+        if similar:
+            parts.append(("Похожее написание" if exact else f"Точных совпадений по запросу «{name}» нет, похожее написание")
+                         + ", проверить вручную: " + "; ".join(
+                             f"«{h['listed_name']}» ({h['list_short']}, сходство {h['similarity']}%)" for h in similar) + ".")
+        summary = " ".join(parts) if parts else f"По запросу «{name}» в перечнях ничего не найдено."
+        summary += f" {source}"
+        return {**meta, "query": name, "hits": hits, "hit_count": len(exact), "similar_count": len(similar),
+                "summary": summary, "accounts": []}
 
     if not account:
         # Без счёта — обзор: какие счета в данных принадлежат лицам из перечней.
-        rows = []
-        for listed in sorted(data.list_hits):
-            transfers = _listed_transfers(data, listed)
-            rows.append({**_account_line(data, listed), "owner": (data.owner(listed) or {}).get("name"),
-                         "hits": data.list_hits[listed], **transfers})
+        def overview_row(account: str, hits: list[dict]) -> dict:
+            return {**_account_line(data, account), "owner": (data.owner(account) or {}).get("name"), "hits": hits,
+                    **_listed_transfers(data, account)}
+
+        rows = [overview_row(a, data.list_hits[a]) for a in sorted(data.list_hits)]
+        similar = [overview_row(a, data.list_similar[a]) for a in sorted(data.list_similar)]
         if not data.owners.size:
             summary = f"В наборе «{data.title}» нет данных о владельцах счетов, сверить их с перечнями нельзя. {source}"
-        elif not rows:
+        elif not rows and not similar:
             summary = f"Ни один владелец счёта в данных не найден в перечнях. {source}"
         else:
-            summary = "Счета лиц из перечней: " + "; ".join(
-                f"{r['account']} — «{r['owner']}» ({r['hits'][0]['list_short']}), входящих переводов "
-                f"{r['incoming_count']} от {r['incoming_senders']} отправителей на {r['incoming_total_text']}"
-                for r in rows) + f". {source}"
-        return {**meta, "listed": rows, "listed_count": len(rows), "summary": summary,
-                "accounts": [r["account"] for r in rows]}
+            parts = []
+            if rows:
+                parts.append("Счета лиц из перечней: " + "; ".join(
+                    f"{r['account']} — «{r['owner']}» ({r['hits'][0]['list_short']}), входящих переводов "
+                    f"{r['incoming_count']} от {r['incoming_senders']} отправителей на {r['incoming_total_text']}"
+                    for r in rows) + ".")
+            else:
+                parts.append("Точных совпадений с перечнями нет.")
+            if similar:
+                parts.append("Похожее написание, проверить вручную: " + "; ".join(
+                    f"{r['account']} — «{r['owner']}» похож на «{r['hits'][0]['listed_name']}» "
+                    f"({r['hits'][0]['list_short']}, сходство {r['hits'][0]['similarity']}%)" for r in similar) + ".")
+            summary = " ".join(parts) + f" {source}"
+        return {**meta, "listed": rows, "listed_count": len(rows), "similar": similar, "similar_count": len(similar),
+                "summary": summary, "accounts": [r["account"] for r in rows + similar]}
 
     account = data.normalize_account(account)
     if not data.has(account):
@@ -140,9 +166,11 @@ def check_lists(data: CaseData, account: str | None = None, name: str | None = N
     edges = data.edges[~data.edges["is_self"]]
     others = set(edges.loc[edges["from_account"] == account, "to_account"]) | \
         set(edges.loc[edges["to_account"] == account, "from_account"])
+    entries = _list_entries(data)
     counterparties = [{**_account_line(data, other), "owner": (data.owner(other) or {}).get("name"),
-                       "hits": data.list_hits[other], **_listed_transfers(data, other, account)}
-                      for other in sorted(others) if other in data.list_hits]
+                       "hits": entries[other], "strict": other in data.list_hits,
+                       **_listed_transfers(data, other, account)}
+                      for other in sorted(others) if other in entries]
     if owner is None:
         summary = f"Для {account} нет данных о владельце: в наборе «{data.title}» владельцев нет. {source}"
         return {**meta, "account": account, "owner": None, "listed": False, "hits": [], "counterparties": [],
@@ -155,16 +183,22 @@ def check_lists(data: CaseData, account: str | None = None, name: str | None = N
                    f"{transfers['outgoing_total_text']}. Операции с ним нужно передать на проверку. {source}")
         return {**meta, "account": account, "owner": owner, "listed": True, "hits": hits, **transfers,
                 "counterparties": counterparties, "summary": summary, "accounts": [account]}
+    similar = data.list_similar.get(account, [])
+    if similar:
+        summary = (f"Владелец {account} — «{owner['name']}» — точно в перечнях не найден, но "
+                   + "; ".join(list_phrases(data, account)) + ". Это может быть другой человек: сверьте документы.")
     else:
         summary = f"Владелец {account} — «{owner['name']}» — в перечнях не найден."
     if counterparties:
-        summary += " Но среди контрагентов есть лица из перечня: " + "; ".join(
-            f"{c['account']} — «{c['owner']}», переводов от {account}: {c['incoming_count']} на "
+        summary += " Но среди контрагентов есть лица из перечня или похожие на них: " + "; ".join(
+            f"{c['account']} — «{c['owner']}» ({'в перечне' if c['strict'] else 'похож, проверить вручную'}), "
+            f"переводов от {account}: {c['incoming_count']} на "
             f"{c['incoming_total_text']}, к {account}: {c['outgoing_count']}" for c in counterparties) + "."
     elif owner is not None:
         summary += " Среди контрагентов лиц из перечней нет."
     summary += f" {source}"
-    return {**meta, "account": account, "owner": owner, "listed": False, "hits": [], "counterparties": counterparties,
+    return {**meta, "account": account, "owner": owner, "listed": False, "hits": [], "similar": similar,
+            "list_similar": bool(similar), "counterparties": counterparties,
             "counterparty_count": len(counterparties), "summary": summary,
             "accounts": [account, *[c["account"] for c in counterparties]]}
 
@@ -372,7 +406,8 @@ def account_profile(data: CaseData, account: str) -> dict:
             "sent_text": money(row["sent"]), "transfer_count": int(row["transfers"]),
             "history_text": _history_text(data, account) if data.kinds.size else "",
             "complaint": complaints.iloc[0]["text"] if len(complaints) else None,
-            "confirmed": account in data.confirmed, "list_phrases": listed, "listed": bool(listed),
+            "confirmed": account in data.confirmed, "list_phrases": listed, "listed": data.is_listed(account),
+            "list_similar": data.is_list_similar(account),
             "owner": data.owner(account), "summary": summary, "accounts": [account]}
 
 
@@ -478,12 +513,14 @@ def list_suspicious(data: CaseData, period: Any = None, limit: int = 10) -> dict
         active = edges[(edges["timestamp"] >= day) & (edges["timestamp"] < day + pd.Timedelta(days=1))]
         table = table[table.index.isin(set(active["from_account"]) | set(active["to_account"]))]
         period_text = f"{day.day} {fmt.MONTHS[day.month - 1]}"
-    listed = table.index.isin(set(data.list_hits))
+    listed = table.index.isin(set(data.list_hits) | set(data.list_similar))
     table = table[listed | (~table.index.isin(data.businesses | data.victims) & ~table.index.str.startswith("ATM"))]
     table["risk"] = data.scores["risk_score"].reindex(table.index).fillna(0)
     # Лица из перечней — всегда в начале: операции с ними проверяются независимо от поведения.
+    # Следом похожие на запись перечня: их нужно проверить вручную.
     table["listed"] = table.index.isin(set(data.list_hits))
-    table = table.sort_values(["listed", "flag_count", "risk"], ascending=False).head(limit)
+    table["similar"] = table.index.isin(set(data.list_similar))
+    table = table.sort_values(["listed", "similar", "flag_count", "risk"], ascending=False).head(limit)
     rows = []
     for account in table.index:
         phrases = list_phrases(data, account) + flag_phrases(data, account)

@@ -97,20 +97,26 @@ def list_lines(data: CaseData, accounts: list[str]) -> list[str]:
         meta = meta or result
         if result.get("owner") is None:
             continue
+        demo = lambda hit: " (тестовая запись демо)" if hit["is_demo"] else ""  # noqa: E731
         if result["listed"]:
             for hit in result["hits"]:
                 lines.append(f"{account}: владелец «{result['owner']['name']}» — {hit['list_title']}, "
-                             f"совпадение по: {hit['match']}" + (" (тестовая запись демо)" if hit["is_demo"] else ""))
+                             f"совпадение по: {hit['match']}" + demo(hit))
+        for hit in result.get("similar", []):
+            lines.append(f"{account}: владелец «{result['owner']['name']}» похож на запись «{hit['listed_name']}» — "
+                         f"{hit['list_title']}, {hit['match']}" + demo(hit))
         for other in result.get("counterparties", []):
+            status = "" if other["strict"] else " (похожее написание, проверить вручную)"
             lines.append(f"{account}: контрагент {other['account']} «{other['owner']}» — "
-                         f"{other['hits'][0]['list_title']}")
+                         f"{other['hits'][0]['list_title']}{status}")
     if meta is None or not data.owners.size:
         lines.append("Данных о владельцах счетов в этом наборе нет, сверка не проводилась.")
     elif not lines:
         lines.append("Владельцы счетов дела и их контрагенты в перечнях не найдены.")
     if meta is not None:
         lines.append(f"Перечни АФМ РК: {meta['list_records_text']} записей, загружены {meta['lists_downloaded_text']}, "
-                     f"источник {meta['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения.")
+                     f"источник {meta['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения; "
+                     "похожее написание отмечено для ручной проверки.")
     return lines
 
 

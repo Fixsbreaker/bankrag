@@ -50,11 +50,19 @@ class CaseData:
         if len(self.owners):
             self.owners = self.owners.set_index("account_id") if "account_id" in self.owners.columns else self.owners
         # Сверка всех владельцев с перечнями один раз при загрузке: счёт → совпадения.
+        # list_hits — точные (красный), list_similar — похожее написание, «проверить вручную» (оранжевый).
         self.list_hits: dict[str, list[dict]] = {}
-        for account, row in self.owners.iterrows():
-            hits = self.watchlist.screen(row["owner_name"], row["owner_kind"], row.get("birth_date"), row.get("iin_bin"))
-            if hits:
-                self.list_hits[str(account)] = [h.as_dict() for h in hits]
+        self.list_similar: dict[str, list[dict]] = {}
+        if len(self.owners):
+            similar = self.watchlist.screen_similar_many(list(zip(
+                self.owners["owner_name"], self.owners["owner_kind"], self.owners.get("birth_date"))))
+            for (account, row), fuzzy in zip(self.owners.iterrows(), similar):
+                hits = self.watchlist.screen(row["owner_name"], row["owner_kind"], row.get("birth_date"),
+                                             row.get("iin_bin"))
+                if hits:
+                    self.list_hits[str(account)] = [h.as_dict() for h in hits]
+                elif fuzzy:
+                    self.list_similar[str(account)] = [h.as_dict() for h in fuzzy]
 
     def owner(self, account: str) -> dict | None:
         """Владелец счёта: ФИО или название, ИИН/БИН, дата рождения. В наборе IBM владельцев нет."""
@@ -67,6 +75,10 @@ class CaseData:
 
     def is_listed(self, account: str) -> bool:
         return account in self.list_hits
+
+    def is_list_similar(self, account: str) -> bool:
+        """Владелец похож на запись перечня (не точное совпадение): проверить вручную."""
+        return account in self.list_similar
 
     @property
     def businesses(self) -> set[str]:
@@ -108,7 +120,7 @@ class CaseData:
         return account_color(int(row["flag_count"]) if row is not None else 0, self.risk(account),
                              account in self.victims, float(row["transfers"]) if row is not None else 0,
                              self.high_risk, self.high_risk * colors["medium_risk_share"],
-                             colors["green_min_transfers"], self.is_listed(account))
+                             colors["green_min_transfers"], self.is_listed(account), self.is_list_similar(account))
 
     def normalize_account(self, value: str) -> str:
         """Номер счёта в виде из данных: «kz 1654», «KZ1654» и «1654» дают KZ-1654."""
@@ -174,4 +186,5 @@ def load_case_data(name: str, config: dict, root: Path, confirmed: set[str] | No
     edges = edges.astype({"from_account": "object", "to_account": "object"})
     scores = scores.set_index("account_id")[["risk_score", "reasons"]]
     return CaseData(name, currency, edges, scores, kinds, complaints, config, high_risk, set(confirmed or set()),
-                    owners=owners, watchlist=load_watchlist(root))
+                    owners=owners,
+                    watchlist=load_watchlist(root, fuzzy_threshold=config.get("watchlist", {}).get("fuzzy_threshold", 88)))

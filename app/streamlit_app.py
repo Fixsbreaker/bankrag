@@ -167,7 +167,7 @@ def render_details(call: dict, data: CaseData) -> None:
                         ("Флажков", str(result["flag_count"])), ("Получено", result["received_text"]),
                         ("Отправлено", result["sent_text"])])
         for phrase in result.get("list_phrases", []):
-            st.error(phrase)
+            (st.warning if phrase.startswith("владелец похож") else st.error)(phrase)
         for phrase in result["flag_phrases"] or ["флажков нет"]:
             st.markdown(f"- {phrase}")
         if result.get("history_text"):
@@ -357,16 +357,24 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
 
 def render_lists(result: dict) -> None:
     """Результат сверки с перечнями АФМ: совпадения, контрагенты и источник перечней."""
-    for hit in result.get("hits", []):
-        st.error(f"{hit['list_title']}: «{hit['listed_name']}» · совпадение по: {hit['match']}"
-                 + (f" · включён {hit['added_to_list']}" if hit.get("added_to_list") else ""))
+    similar = result.get("similar")
+    hits = result.get("hits", []) + (similar if isinstance(similar, list) and similar and "list" in similar[0] else [])
+    for hit in hits:
+        text = (f"{hit['list_title']}: «{hit['listed_name']}» · совпадение по: {hit['match']}"
+                + (f" · включён {hit['added_to_list']}" if hit.get("added_to_list") else ""))
+        if hit.get("strict", True):
+            st.error(text)
+        else:
+            st.warning(text.replace("совпадение по: ", ""))
         if hit.get("is_demo"):
             st.caption("Это вымышленная тестовая запись для демо, в настоящих перечнях её нет.")
-    # Обзор без счёта отдаёт список в listed, проверка счёта — контрагентов из перечней.
+    # Обзор без счёта отдаёт список в listed и similar, проверка счёта — контрагентов из перечней.
     listed = result.get("listed")
-    rows = listed if isinstance(listed, list) else result.get("counterparties")
+    rows = (listed + (similar or [])) if isinstance(listed, list) else result.get("counterparties")
     if rows:
         st.dataframe(pd.DataFrame([{"Счёт": r["account"], "Владелец": r.get("owner") or "—",
+                                    "Совпадение": "точное" if r["hits"][0].get("strict", True)
+                                    else f"похоже ({r['hits'][0]['similarity']}%), проверить",
                                     "Перечень": r["hits"][0]["list_short"], "Входящих": r["incoming_count"],
                                     "Сумма входящих": r["incoming_total_text"], "Исходящих": r["outgoing_count"],
                                     "Последний перевод": r["last_time_text"]} for r in rows]),
@@ -374,19 +382,22 @@ def render_lists(result: dict) -> None:
         if any(h.get("is_demo") for r in rows for h in r["hits"]):
             st.caption("Тестовая запись демо вымышлена, в настоящих перечнях её нет.")
     st.caption(f"Перечни АФМ РК: {result['list_records_text']} записей, загружены {result['lists_downloaded_text']}, "
-               f"источник {result['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения.")
+               f"источник {result['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения; "
+               "похожее написание (опечатка, латиница) — только «проверить вручную».")
 
 
 def render_queue(data: CaseData, analyst: str) -> None:
     """Очередь: счета по числу флажков и оценке модели, под ней профиль выбранного."""
-    listed = data.flags.index.isin(set(data.list_hits))
+    listed = data.flags.index.isin(set(data.list_hits) | set(data.list_similar))
     table = data.flags[listed | ~data.flags.index.isin(data.businesses | data.victims)].copy()
     table["risk"] = data.scores["risk_score"].reindex(table.index).fillna(0)
     table["listed"] = table.index.isin(set(data.list_hits))
-    table = table[table["listed"] | (table["flag_count"] > 0)
+    table["similar"] = table.index.isin(set(data.list_similar))
+    table = table[table["listed"] | table["similar"] | (table["flag_count"] > 0)
                   | (table["risk"] >= data.high_risk * data.config["colors"]["medium_risk_share"])]
-    # Лица из перечней АФМ — в начале очереди независимо от флажков.
-    table = table.sort_values(["listed", "flag_count", "risk"], ascending=False).head(data.config["app"]["queue_rows"])
+    # Лица из перечней АФМ — в начале очереди независимо от флажков, следом похожие на них.
+    table = table.sort_values(["listed", "similar", "flag_count", "risk"],
+                              ascending=False).head(data.config["app"]["queue_rows"])
     decisions = all_latest_decisions(FEEDBACK_PATH)
     view = pd.DataFrame({
         "Счёт": table.index, "Оценка": [mark(data.color(a)) for a in table.index], "Флажков": table["flag_count"].to_numpy(),
