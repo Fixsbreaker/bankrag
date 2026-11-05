@@ -22,7 +22,7 @@ import pandas as pd  # noqa: E402
 from pandas.io.formats.style import Styler  # noqa: E402
 import streamlit as st  # noqa: E402
 
-from bankrag.chat.agent import ChatSession, Turn  # noqa: E402
+from bankrag.chat.agent import ChatSession, Turn, template_answer  # noqa: E402
 from bankrag.chat.journal import read_queries  # noqa: E402
 from bankrag.chat.llm import LLMError, OllamaClient  # noqa: E402
 from bankrag.data_loader import load_config  # noqa: E402
@@ -35,6 +35,7 @@ from bankrag.similarity import SimilarityIndex  # noqa: E402
 from bankrag.tools import fmt  # noqa: E402
 from bankrag.tools import functions as F  # noqa: E402
 from bankrag.tools.data import DATASET_TITLES, IBM, KZ, CaseData, load_case_data  # noqa: E402
+from bankrag.tools.timeline import timeline_chart  # noqa: E402
 
 BANNER = ("Прототип. Данные синтетические (IBM AML, NeurIPS 2023) и сценарии, сгенерированные командой. "
           "Решение принимает аналитик.")
@@ -140,6 +141,12 @@ def render_details(call: dict, data: CaseData) -> None:
         render_numbers([("Шагов", str(result["step_count"])), ("Счетов в цепочке", str(result["chain_count"])),
                         ("Снято наличными", result["cash_text"]), ("Осталось на счетах", result["retained_text"]),
                         ("Время цепочки", result["duration_text"])])
+        chart = timeline_chart(result["steps"])
+        if chart is not None:
+            st.markdown("**Таймлайн: как быстро уходили деньги**")
+            st.altair_chart(chart, width="stretch")
+            st.caption("Полоса — сколько деньги лежали на счёте до следующего перевода, точка — поступление, "
+                       "красный ромб — снятие наличных.")
         table = pd.DataFrame([{"№": s["step"], "Время": s["time_text"], "Откуда": s["from"], "Куда": s["to"],
                                "Сумма": s["amount_text"], "Через": s.get("delay_text") or "—",
                                "Доля": s.get("share_text") or "—"} for s in result["steps"]])
@@ -263,7 +270,8 @@ def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, an
             render_decisions(index, accounts, data, analyst)
         with st.expander("Как получен ответ", expanded=True):
             st.caption(f"Режим: {'модель ' + (session.model.name if session.model else '') if turn.mode == 'llm' else 'кнопки'}"
-                       f" · {turn.seconds:.1f} с · проверка чисел: {'пройдена' if turn.checked else 'не пройдена'}"
+                       + (f" · результат функции через {turn.tools_seconds:.1f} с" if turn.tools_seconds else "")
+                       + f" · ответ через {turn.seconds:.1f} с · проверка чисел: {'пройдена' if turn.checked else 'не пройдена'}"
                        + (" со второй попытки" if turn.retried and turn.checked else ""))
             if turn.unknown:
                 st.caption("Числа, которых не было в результатах: " + ", ".join(turn.unknown))
@@ -369,9 +377,23 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
     typed = st.chat_input("Спросите, например: куда ушли деньги клиентки?", disabled=not ready)
     question = typed or question
     if question:
+        with st.chat_message("user", avatar=":material/person:"):
+            st.markdown(question)
+        with st.chat_message("assistant", avatar=str(MARK)):
+            status = st.status("Модель выбирает функцию…", expanded=True)
+            preview = status.empty()
+
+        def show_results(calls: list[dict]) -> None:
+            # Результат функции посчитан кодом — его можно показать сразу. Текст модели появится
+            # только после проверки чисел, непроверенные числа на экран не попадают.
+            with preview.container():
+                st.markdown(template_answer(calls))
+                for call in calls:
+                    render_details(call, data)
+            status.update(label="Результат функции готов. Модель пишет пересказ, код проверяет числа…")
+
         try:
-            with st.spinner("Модель выбирает функции и пишет ответ…"):
-                session.ask(question)
+            session.ask(question, on_tools=show_results)
         except LLMError as error:
             st.error(f"Модель не ответила: {error}. Используйте режим кнопок.")
         st.rerun()
