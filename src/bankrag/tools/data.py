@@ -13,6 +13,7 @@ from typing import Any
 import pandas as pd
 
 from bankrag.flags import account_color, compute_flags
+from bankrag.watchlist import Watchlist, load_watchlist
 
 KZ = "kz"
 IBM = "ibm"
@@ -38,12 +39,34 @@ class CaseData:
     confirmed: set[str] = field(default_factory=set)
     similarity: Any = None
     knowledge: Any = None
+    owners: pd.DataFrame = field(default_factory=pd.DataFrame)
+    watchlist: Watchlist = field(default_factory=Watchlist)
     flags: pd.DataFrame = field(init=False)
 
     def __post_init__(self) -> None:
         self.edges = self.edges.sort_values("timestamp", kind="stable").reset_index(drop=True)
         self.flags = compute_flags(self.edges, self.config["flags"], self.businesses, self.confirmed)
         self.victims = set(self.complaints["account_id"]) if len(self.complaints) else set()
+        if len(self.owners):
+            self.owners = self.owners.set_index("account_id") if "account_id" in self.owners.columns else self.owners
+        # Сверка всех владельцев с перечнями один раз при загрузке: счёт → совпадения.
+        self.list_hits: dict[str, list[dict]] = {}
+        for account, row in self.owners.iterrows():
+            hits = self.watchlist.screen(row["owner_name"], row["owner_kind"], row.get("birth_date"), row.get("iin_bin"))
+            if hits:
+                self.list_hits[str(account)] = [h.as_dict() for h in hits]
+
+    def owner(self, account: str) -> dict | None:
+        """Владелец счёта: ФИО или название, ИИН/БИН, дата рождения. В наборе IBM владельцев нет."""
+        if account not in self.owners.index:
+            return None
+        row = self.owners.loc[account]
+        birth = row.get("birth_date")
+        return {"kind": row["owner_kind"], "name": row["owner_name"], "iin_bin": row["iin_bin"],
+                "birth_date": None if birth is None or pd.isna(birth) else str(birth)}
+
+    def is_listed(self, account: str) -> bool:
+        return account in self.list_hits
 
     @property
     def businesses(self) -> set[str]:
@@ -85,7 +108,7 @@ class CaseData:
         return account_color(int(row["flag_count"]) if row is not None else 0, self.risk(account),
                              account in self.victims, float(row["transfers"]) if row is not None else 0,
                              self.high_risk, self.high_risk * colors["medium_risk_share"],
-                             colors["green_min_transfers"])
+                             colors["green_min_transfers"], self.is_listed(account))
 
     def normalize_account(self, value: str) -> str:
         """Номер счёта в виде из данных: «kz 1654», «KZ1654» и «1654» дают KZ-1654."""
@@ -133,6 +156,8 @@ def load_case_data(name: str, config: dict, root: Path, confirmed: set[str] | No
         scores = pd.read_parquet(processed / "kz_scores.parquet")
         kinds = pd.read_parquet(processed / "kz_clients.parquet").set_index("account_id")["kind"]
         complaints = pd.read_parquet(processed / "kz_complaints.parquet")
+        owners_path = processed / "kz_owners.parquet"
+        owners = pd.read_parquet(owners_path) if owners_path.exists() else pd.DataFrame()
         currency = "KZT"
     else:
         edges = pd.read_parquet(processed / "edges_test.parquet")
@@ -144,7 +169,9 @@ def load_case_data(name: str, config: dict, root: Path, confirmed: set[str] | No
         kinds = pd.Series(dtype="object")
         complaints = pd.DataFrame(columns=["account_id", "target_account", "transfer_time", "filed_at",
                                            "amount_tenge", "text"])
+        owners = pd.DataFrame()
         currency = "USD"
     edges = edges.astype({"from_account": "object", "to_account": "object"})
     scores = scores.set_index("account_id")[["risk_score", "reasons"]]
-    return CaseData(name, currency, edges, scores, kinds, complaints, config, high_risk, set(confirmed or set()))
+    return CaseData(name, currency, edges, scores, kinds, complaints, config, high_risk, set(confirmed or set()),
+                    owners=owners, watchlist=load_watchlist(root))

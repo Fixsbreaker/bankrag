@@ -1,0 +1,32 @@
+{
+  "lists_downloaded_at": "2026-11-05T08:08:40",
+  "list_records": {
+    "sanction_category_1": 1580,
+    "sanction_category_2": 1184,
+    "sanction_category_3": 239,
+    "sanction_category_4": 486,
+    "demo": 1
+  },
+  "real_records": 3489,
+  "owners": 3179,
+  "persons": 3084,
+  "organizations": 95,
+  "generated_names_skipped_as_real": 1,
+  "demo_account": "KZ-6315",
+  "hits": [
+    {
+      "account_id": "KZ-6315",
+      "list": "demo",
+      "list_title": "Тестовая запись BankRAG (вымышленная, для демо)",
+      "list_short": "тестовая запись демо",
+      "record_id": "DEMO-1",
+      "listed_name": "ТОО «Тестовая запись BankRAG»",
+      "listed_kind": "organization",
+      "listed_birth_date": null,
+      "added_to_list": "2026-11-02",
+      "match": "ИИН/БИН",
+      "is_demo": true
+    }
+  ],
+  "hits_real_lists": 0
+}

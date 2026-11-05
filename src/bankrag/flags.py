@@ -134,9 +134,14 @@ def compute_flags(edges: pd.DataFrame, settings: dict, businesses: set[str] | No
 
 
 def account_color(flag_count: int, risk: float | None, is_victim: bool, transfers: float, high_risk: float,
-                  medium_risk: float, green_min_transfers: int) -> str:
-    """Цвет счёта: пострадавший, подозрительный, стоит проверить, чистый или нейтральный."""
+                  medium_risk: float, green_min_transfers: int, is_listed: bool = False) -> str:
+    """Цвет счёта: в перечне АФМ, пострадавший, подозрительный, стоит проверить, чистый или нейтральный.
+
+    Владелец в перечне — всегда красный: операции с ним проверяются независимо от поведения счёта.
+    """
     risk = 0.0 if risk is None or pd.isna(risk) else float(risk)
+    if is_listed:
+        return RED
     if is_victim:
         return BLUE
     if flag_count >= 2 or risk >= high_risk:

@@ -63,6 +63,112 @@ def flag_phrases(data: CaseData, account: str) -> list[str]:
     return phrases
 
 
+def list_phrases(data: CaseData, account: str) -> list[str]:
+    """Совпадения владельца счёта с перечнями АФМ понятными фразами."""
+    phrases = []
+    for hit in data.list_hits.get(account, []):
+        added = f", включён {fmt.date(hit['added_to_list'])}" if hit["added_to_list"] else ""
+        phrases.append(f"владелец в перечне ({hit['list_short']}): «{hit['listed_name']}»{added}; "
+                       f"совпадение по: {hit['match']}")
+    return phrases
+
+
+def _lists_meta(data: CaseData) -> dict:
+    """Какие перечни загружены и когда: без этого «не найден в перечнях» ничего не значит."""
+    watchlist = data.watchlist
+    loaded = watchlist.downloaded_at
+    return {"list_records": watchlist.real_count, "list_records_text": fmt.number(watchlist.real_count),
+            "lists_downloaded_text": fmt.date(loaded) if loaded else "перечни не загружены",
+            "lists_source": "api.websfm.kz (АФМ РК)"}
+
+
+def _listed_transfers(data: CaseData, listed: str, other: str | None = None) -> dict:
+    """Переводы на счёт и со счёта лица из перечня; other — только с этим контрагентом."""
+    edges = data.edges[~data.edges["is_self"]]
+    incoming = edges[edges["to_account"] == listed]
+    outgoing = edges[edges["from_account"] == listed]
+    if other is not None:
+        incoming = incoming[incoming["from_account"] == other]
+        outgoing = outgoing[outgoing["to_account"] == other]
+    money = lambda value: fmt.money(value, data.currency)  # noqa: E731
+    last = pd.concat([incoming["timestamp"], outgoing["timestamp"]]).max()
+    return {"account": listed, "incoming_count": len(incoming), "incoming_total": float(incoming["amount"].sum()),
+            "incoming_total_text": money(incoming["amount"].sum()), "incoming_senders": int(incoming["from_account"].nunique()),
+            "outgoing_count": len(outgoing), "outgoing_total": float(outgoing["amount"].sum()),
+            "outgoing_total_text": money(outgoing["amount"].sum()),
+            "last_time_text": fmt.when(last) if pd.notna(last) else "—"}
+
+
+def check_lists(data: CaseData, account: str | None = None, name: str | None = None) -> dict:
+    """Проверка по перечням АФМ: владелец счёта, его контрагенты, ФИО/название или ИИН/БИН."""
+    meta = _lists_meta(data)
+    source = (f"Сверка с перечнями АФМ РК ({meta['list_records_text']} записей, загружены "
+              f"{meta['lists_downloaded_text']}) и тестовой записью демо.")
+    if name and not account:
+        hits = [h.as_dict() for h in data.watchlist.lookup(name)]
+        if hits:
+            lines = "; ".join(f"«{h['listed_name']}» ({h['list_short']}, совпадение по: {h['match']})" for h in hits)
+            summary = f"По запросу «{name}» найдено в перечнях: {lines}. {source}"
+        else:
+            summary = f"По запросу «{name}» в перечнях ничего не найдено. {source}"
+        return {**meta, "query": name, "hits": hits, "hit_count": len(hits), "summary": summary, "accounts": []}
+
+    if not account:
+        # Без счёта — обзор: какие счета в данных принадлежат лицам из перечней.
+        rows = []
+        for listed in sorted(data.list_hits):
+            transfers = _listed_transfers(data, listed)
+            rows.append({**_account_line(data, listed), "owner": (data.owner(listed) or {}).get("name"),
+                         "hits": data.list_hits[listed], **transfers})
+        if not data.owners.size:
+            summary = f"В наборе «{data.title}» нет данных о владельцах счетов, сверить их с перечнями нельзя. {source}"
+        elif not rows:
+            summary = f"Ни один владелец счёта в данных не найден в перечнях. {source}"
+        else:
+            summary = "Счета лиц из перечней: " + "; ".join(
+                f"{r['account']} — «{r['owner']}» ({r['hits'][0]['list_short']}), входящих переводов "
+                f"{r['incoming_count']} от {r['incoming_senders']} отправителей на {r['incoming_total_text']}"
+                for r in rows) + f". {source}"
+        return {**meta, "listed": rows, "listed_count": len(rows), "summary": summary,
+                "accounts": [r["account"] for r in rows]}
+
+    account = data.normalize_account(account)
+    if not data.has(account):
+        return _not_found(account)
+    owner = data.owner(account)
+    hits = data.list_hits.get(account, [])
+    edges = data.edges[~data.edges["is_self"]]
+    others = set(edges.loc[edges["from_account"] == account, "to_account"]) | \
+        set(edges.loc[edges["to_account"] == account, "from_account"])
+    counterparties = [{**_account_line(data, other), "owner": (data.owner(other) or {}).get("name"),
+                       "hits": data.list_hits[other], **_listed_transfers(data, other, account)}
+                      for other in sorted(others) if other in data.list_hits]
+    if owner is None:
+        summary = f"Для {account} нет данных о владельце: в наборе «{data.title}» владельцев нет. {source}"
+        return {**meta, "account": account, "owner": None, "listed": False, "hits": [], "counterparties": [],
+                "summary": summary, "accounts": [account]}
+    if hits:
+        transfers = _listed_transfers(data, account)
+        summary = (f"Владелец {account} — «{owner['name']}» — найден в перечне: " + "; ".join(list_phrases(data, account))
+                   + f". Входящих переводов {transfers['incoming_count']} от {transfers['incoming_senders']} "
+                   f"отправителей на {transfers['incoming_total_text']}, исходящих {transfers['outgoing_count']} на "
+                   f"{transfers['outgoing_total_text']}. Операции с ним нужно передать на проверку. {source}")
+        return {**meta, "account": account, "owner": owner, "listed": True, "hits": hits, **transfers,
+                "counterparties": counterparties, "summary": summary, "accounts": [account]}
+    else:
+        summary = f"Владелец {account} — «{owner['name']}» — в перечнях не найден."
+    if counterparties:
+        summary += " Но среди контрагентов есть лица из перечня: " + "; ".join(
+            f"{c['account']} — «{c['owner']}», переводов от {account}: {c['incoming_count']} на "
+            f"{c['incoming_total_text']}, к {account}: {c['outgoing_count']}" for c in counterparties) + "."
+    elif owner is not None:
+        summary += " Среди контрагентов лиц из перечней нет."
+    summary += f" {source}"
+    return {**meta, "account": account, "owner": owner, "listed": False, "hits": [], "counterparties": counterparties,
+            "counterparty_count": len(counterparties), "summary": summary,
+            "accounts": [account, *[c["account"] for c in counterparties]]}
+
+
 def _node(data: CaseData, account: str) -> dict:
     if account == CASH_NODE:
         return {"id": CASH_NODE, "label": "Наличные (банкомат)", "color": "cash", "flags": 0, "confirmed": False}
@@ -248,7 +354,10 @@ def account_profile(data: CaseData, account: str) -> dict:
     risk_text = "нет оценки" if risk is None else fmt.number(risk, 3)
     level = ("нет оценки" if risk is None else "высокий" if risk >= data.high_risk
              else "средний" if risk >= data.high_risk * data.config["colors"]["medium_risk_share"] else "низкий")
+    listed = list_phrases(data, account)
     summary = f"{account} ({KIND_TITLES.get(kind, kind)}): {COLOR_TITLES[color]}, флажков {len(phrases)}."
+    if listed:
+        summary += " " + "; ".join(listed).capitalize() + "."
     if phrases:
         summary += " " + "; ".join(phrases) + "."
     if len(complaints):
@@ -263,7 +372,8 @@ def account_profile(data: CaseData, account: str) -> dict:
             "sent_text": money(row["sent"]), "transfer_count": int(row["transfers"]),
             "history_text": _history_text(data, account) if data.kinds.size else "",
             "complaint": complaints.iloc[0]["text"] if len(complaints) else None,
-            "confirmed": account in data.confirmed, "summary": summary, "accounts": [account]}
+            "confirmed": account in data.confirmed, "list_phrases": listed, "listed": bool(listed),
+            "owner": data.owner(account), "summary": summary, "accounts": [account]}
 
 
 def find_network(data: CaseData, accounts: Any, depth: int = 2) -> dict:
@@ -368,12 +478,15 @@ def list_suspicious(data: CaseData, period: Any = None, limit: int = 10) -> dict
         active = edges[(edges["timestamp"] >= day) & (edges["timestamp"] < day + pd.Timedelta(days=1))]
         table = table[table.index.isin(set(active["from_account"]) | set(active["to_account"]))]
         period_text = f"{day.day} {fmt.MONTHS[day.month - 1]}"
-    table = table[~table.index.isin(data.businesses | data.victims) & ~table.index.str.startswith("ATM")]
+    listed = table.index.isin(set(data.list_hits))
+    table = table[listed | (~table.index.isin(data.businesses | data.victims) & ~table.index.str.startswith("ATM"))]
     table["risk"] = data.scores["risk_score"].reindex(table.index).fillna(0)
-    table = table.sort_values(["flag_count", "risk"], ascending=False).head(limit)
+    # Лица из перечней — всегда в начале: операции с ними проверяются независимо от поведения.
+    table["listed"] = table.index.isin(set(data.list_hits))
+    table = table.sort_values(["listed", "flag_count", "risk"], ascending=False).head(limit)
     rows = []
     for account in table.index:
-        phrases = flag_phrases(data, account)
+        phrases = list_phrases(data, account) + flag_phrases(data, account)
         reason = phrases[0] if phrases else (data.model_reasons(account) or ["—"])[0]
         rows.append({**_account_line(data, account), "risk_text": fmt.number(data.risk(account) or 0, 3),
                      "main_reason": reason})

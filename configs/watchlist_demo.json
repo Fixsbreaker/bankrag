@@ -1,0 +1,13 @@
+[
+  {
+    "id": "DEMO-1",
+    "full_name": "ТОО «Тестовая запись BankRAG»",
+    "iin": "990000000001",
+    "type": "organization",
+    "category": "demo",
+    "status": "acting",
+    "note": "Вымышленная запись для демо в формате API АФМ. В настоящих перечнях её нет. БИН недействительный: месяц 00.",
+    "added_to_list": "2026-11-02",
+    "date_of_birth": null
+  }
+]

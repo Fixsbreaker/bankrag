@@ -69,6 +69,15 @@
 - question: "Собери документ по счетам {split1} и {split2}"
   tool: make_report
   args: {accounts: "{split1}"}
+- question: "Есть ли {listed} в перечнях АФМ?"
+  tool: check_lists
+  args: {account: "{listed}"}
+- question: "Проверь {first_drop} по спискам террористов и экстремистов"
+  tool: check_lists
+  args: {account: "{first_drop}"}
+- question: "Есть ли среди клиентов лица из перечня АФМ?"
+  tool: check_lists
+  args: {}
 - question: "Покажи на графе"
   context: "Клиентка 3 ноября в 14:05 перевела 500 000 ₸ на {first_drop}. Куда ушли деньги?"
   tool: show_graph
