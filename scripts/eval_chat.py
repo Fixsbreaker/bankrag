@@ -97,7 +97,8 @@ def main() -> None:
     data.knowledge = KnowledgeBase.load(ROOT / "models", e5_embedder())
     demo = json.loads((ROOT / "reports" / "demo_case.json").read_text(encoding="utf-8"))
     accounts = {"first_drop": demo["first_drop"], "second": demo["layers"][1][0], "split1": demo["layers"][-1][0],
-                "split2": demo["layers"][-1][-1], "victim": demo["victim"]}
+                "split2": demo["layers"][-1][-1], "victim": demo["victim"],
+                "listed": json.loads((ROOT / "reports" / "watchlist.json").read_text(encoding="utf-8"))["demo_account"]}
     items = yaml.safe_load(QUESTIONS.read_text(encoding="utf-8"))[:args.limit]
 
     rows = []

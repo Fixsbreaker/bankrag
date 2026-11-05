@@ -166,10 +166,14 @@ def render_details(call: dict, data: CaseData) -> None:
         render_numbers([("Риск модели", f"{result['risk_text']} ({result['risk_level']})"),
                         ("Флажков", str(result["flag_count"])), ("Получено", result["received_text"]),
                         ("Отправлено", result["sent_text"])])
+        for phrase in result.get("list_phrases", []):
+            st.error(phrase)
         for phrase in result["flag_phrases"] or ["флажков нет"]:
             st.markdown(f"- {phrase}")
         if result.get("history_text"):
             st.caption(result["history_text"].capitalize())
+    elif name == "check_lists":
+        render_lists(result)
     elif name == "search_knowledge":
         st.markdown("**Фрагменты базы знаний (дословно)**")
         for fragment in result["fragments"]:
@@ -351,17 +355,44 @@ def render_chat(session: ChatSession, data: CaseData, ready: bool, analyst: str)
         st.rerun()
 
 
+def render_lists(result: dict) -> None:
+    """Результат сверки с перечнями АФМ: совпадения, контрагенты и источник перечней."""
+    for hit in result.get("hits", []):
+        st.error(f"{hit['list_title']}: «{hit['listed_name']}» · совпадение по: {hit['match']}"
+                 + (f" · включён {hit['added_to_list']}" if hit.get("added_to_list") else ""))
+        if hit.get("is_demo"):
+            st.caption("Это вымышленная тестовая запись для демо, в настоящих перечнях её нет.")
+    # Обзор без счёта отдаёт список в listed, проверка счёта — контрагентов из перечней.
+    listed = result.get("listed")
+    rows = listed if isinstance(listed, list) else result.get("counterparties")
+    if rows:
+        st.dataframe(pd.DataFrame([{"Счёт": r["account"], "Владелец": r.get("owner") or "—",
+                                    "Перечень": r["hits"][0]["list_short"], "Входящих": r["incoming_count"],
+                                    "Сумма входящих": r["incoming_total_text"], "Исходящих": r["outgoing_count"],
+                                    "Последний перевод": r["last_time_text"]} for r in rows]),
+                     hide_index=True, width="stretch")
+        if any(h.get("is_demo") for r in rows for h in r["hits"]):
+            st.caption("Тестовая запись демо вымышлена, в настоящих перечнях её нет.")
+    st.caption(f"Перечни АФМ РК: {result['list_records_text']} записей, загружены {result['lists_downloaded_text']}, "
+               f"источник {result['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения.")
+
+
 def render_queue(data: CaseData, analyst: str) -> None:
     """Очередь: счета по числу флажков и оценке модели, под ней профиль выбранного."""
-    table = data.flags[~data.flags.index.isin(data.businesses | data.victims)].copy()
+    listed = data.flags.index.isin(set(data.list_hits))
+    table = data.flags[listed | ~data.flags.index.isin(data.businesses | data.victims)].copy()
     table["risk"] = data.scores["risk_score"].reindex(table.index).fillna(0)
-    table = table[(table["flag_count"] > 0) | (table["risk"] >= data.high_risk * data.config["colors"]["medium_risk_share"])]
-    table = table.sort_values(["flag_count", "risk"], ascending=False).head(data.config["app"]["queue_rows"])
+    table["listed"] = table.index.isin(set(data.list_hits))
+    table = table[table["listed"] | (table["flag_count"] > 0)
+                  | (table["risk"] >= data.high_risk * data.config["colors"]["medium_risk_share"])]
+    # Лица из перечней АФМ — в начале очереди независимо от флажков.
+    table = table.sort_values(["listed", "flag_count", "risk"], ascending=False).head(data.config["app"]["queue_rows"])
     decisions = all_latest_decisions(FEEDBACK_PATH)
     view = pd.DataFrame({
         "Счёт": table.index, "Оценка": [mark(data.color(a)) for a in table.index], "Флажков": table["flag_count"].to_numpy(),
         "Риск модели": table["risk"].to_numpy(),
-        "Главная причина": [(F.flag_phrases(data, a) or data.model_reasons(a) or ["—"])[0] for a in table.index],
+        "Главная причина": [(F.list_phrases(data, a) + F.flag_phrases(data, a) or data.model_reasons(a) or ["—"])[0]
+                            for a in table.index],
         "Решение": [DECISION_TITLES.get(decisions.get(a), "") for a in table.index]})
     st.caption(f"Счетов с флажками или заметным риском: {len(view)} из {len(data.flags)}. Выберите строку.")
     selection = st.dataframe(styled(view), hide_index=True, width="stretch", height=360, on_select="rerun",

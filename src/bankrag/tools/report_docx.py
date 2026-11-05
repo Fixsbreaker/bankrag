@@ -29,13 +29,20 @@ CASH = "Наличные"
 
 
 def case_transfers(data: CaseData, accounts: list[str]) -> pd.DataFrame:
-    """Переводы дела: между счетами дела, поступления на них от пострадавших и снятие наличных."""
+    """Переводы дела: между счетами дела, поступления на них от пострадавших и снятие наличных.
+
+    Если между счетами дела переводов нет (например, справка по одному счёту), в таблицу идут
+    все переводы этих счетов: иначе она была бы пустой.
+    """
     edges = data.edges[~data.edges["is_self"]]
     chosen = set(accounts)
     inside = edges["from_account"].isin(chosen) & edges["to_account"].isin(chosen)
     cash = edges["from_account"].isin(chosen) & edges["is_withdrawal"]
     from_victims = edges["to_account"].isin(chosen) & edges["from_account"].isin(data.victims)
-    return edges[inside | cash | from_victims].sort_values("timestamp")
+    selected = inside | cash | from_victims
+    if not inside.any():
+        selected |= edges["from_account"].isin(chosen) | edges["to_account"].isin(chosen)
+    return edges[selected].sort_values("timestamp")
 
 
 def graph_png(data: CaseData, transfers: pd.DataFrame) -> bytes:
@@ -79,6 +86,34 @@ def _table(document: Document, header: list[str], rows: list[list[str]]) -> None
                     run.font.size = Pt(8)
 
 
+def list_lines(data: CaseData, accounts: list[str]) -> list[str]:
+    """Строки раздела о перечнях: совпадения владельцев счетов дела и их контрагентов, источник и дата."""
+    from bankrag.tools.functions import check_lists
+
+    lines: list[str] = []
+    meta = None
+    for account in accounts:
+        result = check_lists(data, account=account)
+        meta = meta or result
+        if result.get("owner") is None:
+            continue
+        if result["listed"]:
+            for hit in result["hits"]:
+                lines.append(f"{account}: владелец «{result['owner']['name']}» — {hit['list_title']}, "
+                             f"совпадение по: {hit['match']}" + (" (тестовая запись демо)" if hit["is_demo"] else ""))
+        for other in result.get("counterparties", []):
+            lines.append(f"{account}: контрагент {other['account']} «{other['owner']}» — "
+                         f"{other['hits'][0]['list_title']}")
+    if meta is None or not data.owners.size:
+        lines.append("Данных о владельцах счетов в этом наборе нет, сверка не проводилась.")
+    elif not lines:
+        lines.append("Владельцы счетов дела и их контрагенты в перечнях не найдены.")
+    if meta is not None:
+        lines.append(f"Перечни АФМ РК: {meta['list_records_text']} записей, загружены {meta['lists_downloaded_text']}, "
+                     f"источник {meta['lists_source']}. Сверка по ИИН/БИН, названию или ФИО с датой рождения.")
+    return lines
+
+
 def build_case_report(data: CaseData, accounts: list[str], title: str, out_dir: Path | None = None) -> tuple[Path, int]:
     """Сохраняет справку и возвращает путь к файлу и число переводов в таблице."""
     from bankrag.tools.functions import flag_phrases
@@ -108,6 +143,10 @@ def build_case_report(data: CaseData, accounts: list[str], title: str, out_dir: 
     _table(document, ["Счёт", "Оценка", "Флажки", "Риск модели"], [
         [account, COLOR_TITLES[data.color(account)], "; ".join(flag_phrases(data, account)) or "нет",
          "нет оценки" if data.risk(account) is None else fmt.number(data.risk(account), 3)] for account in accounts])
+
+    document.add_heading("Проверка по перечням АФМ", level=2)
+    for line in list_lines(data, accounts):
+        document.add_paragraph(line, style="List Bullet")
 
     document.add_heading("Норма закона (дословно)", level=2)
     fragments = parse_document(LAW_FILE.read_text(encoding="utf-8"))

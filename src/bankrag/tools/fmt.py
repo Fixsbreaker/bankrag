@@ -72,3 +72,9 @@ def plural(count: int, one: str, few: str, many: str) -> str:
 def hours(value: float) -> str:
     """Окно в часах: «72 ч»."""
     return f"{value:.0f} ч"
+
+
+def date(value) -> str:
+    """Дата без времени: «2 ноября 2026»."""
+    moment = pd.Timestamp(value)
+    return f"{moment.day} {MONTHS[moment.month - 1]} {moment.year}"
