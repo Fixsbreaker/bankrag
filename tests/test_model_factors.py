@@ -48,3 +48,11 @@ def test_profile_shows_factors_with_shares(data: CaseData) -> None:
 def test_profile_without_explanations_still_works(data: CaseData) -> None:
     profile = F.account_profile(data, data.scores.index[0])
     assert profile["model_up"] == [] and "Вклад признаков" not in profile["summary"]
+
+
+def test_payment_formats_are_russian_and_cash_is_not_atm_in_ibm() -> None:
+    from bankrag.tools import fmt
+
+    assert fmt.payment_format("Credit Card") == "карточный перевод"
+    assert fmt.payment_format("Cash", is_withdrawal=True) == "снятие наличных в банкомате"
+    assert "банкомат" not in fmt.payment_format("Cash")

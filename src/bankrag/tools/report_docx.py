@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from docx import Document  # noqa: E402
 from docx.shared import Cm, Pt  # noqa: E402
 
 from bankrag.data_loader import ROOT  # noqa: E402
-from bankrag.flags import COLOR_HEX, COLOR_TITLES  # noqa: E402
+from bankrag.flags import BLUE, COLOR_HEX, COLOR_TITLES, ORANGE, RED  # noqa: E402
 from bankrag.kb_index import parse_document  # noqa: E402
 from bankrag.tools import fmt  # noqa: E402
 from bankrag.tools.data import CaseData  # noqa: E402
@@ -26,6 +27,7 @@ NOTE = ("Прототип BankRAG. Данные синтетические: IBM 
         "Справка собрана автоматически из данных и базы знаний, решение принимает аналитик. "
         "Правовую оценку даёт уполномоченный орган.")
 CASH = "Наличные"
+DECISION_TITLES = {"confirmed": "подтвердил", "rejected": "отклонил"}
 
 
 def case_transfers(data: CaseData, accounts: list[str]) -> pd.DataFrame:
@@ -120,23 +122,86 @@ def list_lines(data: CaseData, accounts: list[str]) -> list[str]:
     return lines
 
 
-def build_case_report(data: CaseData, accounts: list[str], title: str, out_dir: Path | None = None) -> tuple[Path, int]:
-    """Сохраняет справку и возвращает путь к файлу и число переводов в таблице."""
+def case_summary(data: CaseData, accounts: list[str], transfers: pd.DataFrame,
+                 decisions: dict[str, str] | None = None) -> list[str]:
+    """Краткая фабула: все числа считаются из переводов дела, флажков, жалоб и журнала решений."""
+    money = lambda value: fmt.money(value, data.currency)  # noqa: E731
+    colors = [data.color(a) for a in accounts]
+    lines = [f"Счетов в деле: {len(accounts)}; подозрительных {colors.count(RED)}, стоит проверить "
+             f"{colors.count(ORANGE)}, пострадавших {colors.count(BLUE)}."]
+    if len(transfers):
+        start, end = transfers["timestamp"].min(), transfers["timestamp"].max()
+        lines.append(f"Переводов в деле: {len(transfers)} на {money(transfers['amount'].sum())}, "
+                     f"с {fmt.when(start)} по {fmt.when(end)} ({fmt.duration((end - start).total_seconds() / 60)}).")
+    from_victims = transfers[transfers["from_account"].isin(data.victims)]
+    if len(from_victims):
+        lines.append(f"От пострадавших с жалобами: {fmt.plural(from_victims['from_account'].nunique(), 'счёт', 'счёта', 'счетов')}, "
+                     f"{money(from_victims['amount'].sum())}.")
+    cash = transfers[transfers["is_withdrawal"]]
+    if len(cash):
+        line = f"Снято наличными: {money(cash['amount'].sum())}"
+        if len(from_victims):
+            first = from_victims["timestamp"].min()
+            later = cash[cash["timestamp"] >= first]
+            if len(later):
+                line += f", первое снятие через {fmt.duration((later['timestamp'].min() - first).total_seconds() / 60)} " \
+                        "после первого перевода пострадавшего"
+        lines.append(line + ".")
+    listed = [a for a in accounts if data.is_listed(a)]
+    similar = [a for a in accounts if data.is_list_similar(a)]
+    if listed or similar:
+        lines.append(f"Перечни АФМ: владельцы в перечне — {', '.join(listed) or 'нет'}; похожее написание, "
+                     f"проверить вручную — {', '.join(similar) or 'нет'}.")
+    decided = {a: DECISION_TITLES.get(d, d) for a, d in (decisions or {}).items() if a in accounts}
+    if decided:
+        lines.append("Решение аналитика: " + "; ".join(f"{a} — {d}" for a, d in decided.items()) + ".")
+    else:
+        lines.append("Решение аналитика по счетам дела ещё не записано.")
+    return lines
+
+
+def case_appendix(data: CaseData, accounts: list[str], title: str, transfers: pd.DataFrame,
+                  summary: list[str], decisions: dict[str, str] | None) -> dict:
+    """Машиночитаемое приложение к справке: те же данные, что в DOCX, все переводы без обрезки."""
+    from bankrag.tools.functions import flag_phrases, list_phrases
+
+    return {
+        "title": title, "created_at": datetime.now().isoformat(timespec="seconds"), "dataset": data.title,
+        "currency": data.currency, "note": NOTE, "summary": summary,
+        "accounts": [{"account": a, "color": data.color(a), "color_text": COLOR_TITLES[data.color(a)],
+                      "flags": flag_phrases(data, a), "risk_score": data.risk(a), "owner": data.owner(a),
+                      "lists": list_phrases(data, a), "decision": (decisions or {}).get(a)} for a in accounts],
+        "transfers": [{"time": r.timestamp.isoformat(), "from": r.from_account,
+                       "to": CASH if r.is_withdrawal else r.to_account, "amount": float(r.amount),
+                       "format": fmt.payment_format(r.payment_format, bool(r.is_withdrawal))}
+                      for r in transfers.itertuples(index=False)],
+    }
+
+
+def build_case_report(data: CaseData, accounts: list[str], title: str, out_dir: Path | None = None,
+                      decisions: dict[str, str] | None = None) -> tuple[Path, int]:
+    """Сохраняет справку DOCX и приложение JSON рядом; возвращает путь к DOCX и число переводов."""
     from bankrag.tools.functions import flag_phrases
 
     out_dir = out_dir or ROOT / "data" / "cases"
     out_dir.mkdir(parents=True, exist_ok=True)
     transfers = case_transfers(data, accounts)
+    summary = case_summary(data, accounts, transfers, decisions)
     document = Document()
     document.add_heading(title, level=1)
     document.add_paragraph(f"Сформировано {datetime.now():%d.%m.%Y %H:%M}. Набор данных: {data.title}.")
     document.add_paragraph(NOTE).runs[0].italic = True
 
+    document.add_heading("Кратко", level=2)
+    for line in summary:
+        document.add_paragraph(line, style="List Bullet")
+
     document.add_heading("Движение денег", level=2)
     shown = transfers.head(MAX_ROWS)
     _table(document, ["Время", "Откуда", "Куда", "Сумма", "Формат"], [
         [fmt.when(r.timestamp), r.from_account, CASH + " (банкомат)" if r.is_withdrawal else r.to_account,
-         fmt.money(r.amount, data.currency), str(r.payment_format)] for r in shown.itertuples(index=False)])
+         fmt.money(r.amount, data.currency), fmt.payment_format(r.payment_format, bool(r.is_withdrawal))]
+        for r in shown.itertuples(index=False)])
     if len(transfers) > MAX_ROWS:
         document.add_paragraph(f"Показаны первые {MAX_ROWS} переводов из {len(transfers)}.")
 
@@ -162,5 +227,8 @@ def build_case_report(data: CaseData, accounts: list[str], title: str, out_dir: 
         document.add_paragraph(f"Источник: {fragments[0]['source']}. Правовую оценку даёт уполномоченный орган.")
 
     path = out_dir / f"case_{datetime.now():%Y%m%d_%H%M%S_%f}.docx"
+    document.add_paragraph(f"Машиночитаемое приложение: {path.with_suffix('.json').name} (все переводы дела, JSON).")
     document.save(path)
+    appendix = case_appendix(data, accounts, title, transfers, summary, decisions)
+    path.with_suffix(".json").write_text(json.dumps(appendix, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
     return path, len(transfers)

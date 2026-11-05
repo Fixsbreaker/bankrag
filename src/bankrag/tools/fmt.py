@@ -78,3 +78,17 @@ def date(value) -> str:
     """Дата без времени: «2 ноября 2026»."""
     moment = pd.Timestamp(value)
     return f"{moment.day} {MONTHS[moment.month - 1]} {moment.year}"
+
+
+# Форматы платежей из данных по-русски. В IBM формат Cash — платёж между счетами, а не снятие:
+# снятием он назван только там, где перевод ушёл в банкомат (is_withdrawal).
+PAYMENT_FORMATS = {"Credit Card": "карточный перевод", "ACH": "межбанковский перевод (ACH)",
+                   "Wire": "банковский перевод (Wire)", "Cheque": "чек", "Bitcoin": "биткоин",
+                   "Reinvestment": "реинвестирование", "Cash": "наличный платёж (формат IBM)"}
+
+
+def payment_format(value, is_withdrawal: bool = False) -> str:
+    """Формат платежа по-русски: «карточный перевод», «снятие наличных в банкомате»."""
+    if is_withdrawal:
+        return "снятие наличных в банкомате"
+    return PAYMENT_FORMATS.get(str(value), str(value))

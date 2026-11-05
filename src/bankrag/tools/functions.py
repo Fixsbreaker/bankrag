@@ -592,9 +592,17 @@ def make_report(data: CaseData, accounts: Any, case_title: str = "Справка
     missing = [a for a in seeds if not data.has(a)]
     if missing or not seeds:
         return _not_found(", ".join(missing) or "—")
-    path, transfers = build_case_report(data, seeds, str(case_title or "Справка по делу"), out_dir)
+    from bankrag.data_loader import ROOT
+    from bankrag.feedback import all_latest_decisions
+
+    # Решения аналитика из журнала кнопок «подтвердил / отклонил» попадают в фабулу справки.
+    feedback = ROOT / "data" / "feedback" / "feedback.sqlite"
+    decisions = all_latest_decisions(feedback) if feedback.exists() else {}
+    path, transfers = build_case_report(data, seeds, str(case_title or "Справка по делу"), out_dir, decisions)
     summary = (f"Справка «{case_title}» готова: {fmt.plural(len(seeds), 'счёт', 'счёта', 'счетов')}, "
                f"{fmt.plural(transfers, 'перевод', 'перевода', 'переводов')} в таблице движения денег, "
-               "граф, флажки и дословный текст ст. 232-1 УК РК. Скачать её можно кнопкой «Справка» под ответом.")
-    return {"path": str(path), "file_name": path.name, "account_count": len(seeds), "transfer_count": transfers,
+               "краткая фабула, граф, флажки и дословный текст ст. 232-1 УК РК, рядом приложение JSON. "
+               "Скачать их можно кнопками под ответом.")
+    return {"path": str(path), "file_name": path.name, "json_path": str(path.with_suffix(".json")),
+            "account_count": len(seeds), "transfer_count": transfers,
             "summary": summary, "accounts": seeds}

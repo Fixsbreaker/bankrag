@@ -1,6 +1,7 @@
 """Сверка с перечнями АФМ: нормализация, правила совпадения, владельцы, функция чата и справка."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -190,5 +191,12 @@ def test_check_lists_by_name(listed_data: CaseData) -> None:
 def test_report_has_list_section_and_rows_for_single_account(listed_data: CaseData, tmp_path: Path) -> None:
     result = F.make_report(listed_data, ["KZ-7000"], out_dir=tmp_path)
     assert result["transfer_count"] == 7
-    text = "\n".join(p.text for p in Document(result["path"]).paragraphs)
+    document = Document(result["path"])
+    text = "\n".join(p.text for p in document.paragraphs)
     assert "Проверка по перечням АФМ" in text and "тестовая запись демо" in text
+    assert "Кратко" in text and "Счетов в деле: 1" in text and "Перечни АФМ: владельцы в перечне — KZ-7000" in text
+    formats = {row.cells[4].text for row in document.tables[0].rows[1:]}
+    assert formats and not formats & {"Credit Card", "ACH", "Cash"}
+    appendix = json.loads(Path(result["json_path"]).read_text(encoding="utf-8"))
+    assert len(appendix["transfers"]) == 7 and appendix["accounts"][0]["account"] == "KZ-7000"
+    assert appendix["summary"][0].startswith("Счетов в деле")

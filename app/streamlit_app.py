@@ -255,6 +255,10 @@ def render_turn(index: int, turn: Turn, session: ChatSession, data: CaseData, an
             buttons[1].download_button("Скачать DOCX", Path(report_path).read_bytes(), file_name=Path(report_path).name,
                                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                                        key=f"download_{index}")
+            appendix = Path(report_path).with_suffix(".json")
+            if appendix.exists():
+                buttons[1].download_button("Скачать JSON", appendix.read_bytes(), file_name=appendix.name,
+                                           mime="application/json", key=f"download_json_{index}")
         if accounts:
             render_decisions(index, accounts, data, analyst)
         with st.expander("Как получен ответ", expanded=True):
