@@ -1,4 +1,4 @@
-.PHONY: setup data build eval app test chat-eval check-llm
+.PHONY: setup data lists build eval app test chat-eval check-llm
 
 VENV := .venv
 PY := $(VENV)/bin/python
@@ -15,6 +15,12 @@ setup:
 
 data:
 	scripts/download_data.sh
+	$(PY) scripts/download_lists.py
+
+# Перечни АФМ РК (открытый API api.websfm.kz). Можно обновлять каждый день, затем PYTHONPATH=src $(PY) -m bankrag.owners.
+lists:
+	$(PY) scripts/download_lists.py
+	PYTHONPATH=src $(PY) -W ignore -m bankrag.owners
 
 build:
 	scripts/build_all.sh
